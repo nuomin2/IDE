@@ -19,6 +19,8 @@ namespace Pytools.ViewModels
         private string? _currentRootPath;
         private string _codeContent = "";
 
+
+
         // 绑定到窗口标题栏
         public string WindowTitle
         {

@@ -60,59 +60,90 @@ namespace Pytools.Views
                 }
             };
         }
-        
 
 
-        /// 遍历文件夹，将文件名显示在左侧的 ProjectTreeView 中 (纯 UI 操作)
+
+        /// 遍历文件夹，支持多层级递归 (纯 UI 操作)
         private void LoadDirectory(string? path)
         {
             if (string.IsNullOrEmpty(path) || !Directory.Exists(path)) return;
 
             ProjectTreeView.Items.Clear();
 
-            TreeViewItem root = new TreeViewItem
-            {
-                Header = System.IO.Path.GetFileName(path),
-                IsExpanded = true
-            };
-
             try
             {
-                foreach (string file in Directory.GetFiles(path))
-                {
-                    root.Items.Add(new TreeViewItem { Header = System.IO.Path.GetFileName(file) });
-                }
-                ProjectTreeView.Items.Add(root);
+                // 从根节点开始构建树
+                TreeViewItem rootNode = CreateDirectoryNode(path);
+                rootNode.IsExpanded = true; // 默认展开根目录
+                ProjectTreeView.Items.Add(rootNode);
             }
             catch (Exception ex)
             {
-                _viewModel.ConsoleText += $"加载出错: {ex.Message}\n";
+                _viewModel.ConsoleText += $"加载目录树出错: {ex.Message}\n";
             }
         }
 
+        /// 递归生成目录树节点的核心方法
+        private TreeViewItem CreateDirectoryNode(string path)
+        {
+            var node = new TreeViewItem
+            {
+                Header = System.IO.Path.GetFileName(path),
+                Tag = path // 重点：将该文件夹的完整绝对路径存入 Tag
+            };
 
-        /// 当用户点击左侧树状列表中的文件项时触发
+            // 如果选择了磁盘根目录（如 "C:\"），GetFileName 会返回空，此时直接用路径作为 Header
+            if (string.IsNullOrEmpty(node.Header.ToString()))
+            {
+                node.Header = path;
+            }
+
+            try
+            {
+                // 1. 先遍历并添加子文件夹（递归调用）
+                foreach (string directory in Directory.GetDirectories(path))
+                {
+                    node.Items.Add(CreateDirectoryNode(directory));
+                }
+
+                // 2. 再遍历并添加当前目录下的文件
+                foreach (string file in Directory.GetFiles(path))
+                {
+                    node.Items.Add(new TreeViewItem
+                    {
+                        Header = System.IO.Path.GetFileName(file),
+                        Tag = file // 重点：将文件的完整绝对路径存入 Tag
+                    });
+                }
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // 忽略系统隐藏文件夹或没有权限访问的文件夹，防止程序崩溃
+            }
+
+            return node;
+        }
+
+        /// 当用户点击左侧树状列表中的项时触发
         private void ProjectTreeView_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {
             var selectedItem = ProjectTreeView.SelectedItem as TreeViewItem;
-            if (selectedItem == null || _viewModel.CurrentRootPath == null) return;
+            if (selectedItem == null) return;
 
-            if (selectedItem.Items.Count == 0)
+            // 直接从 Tag 中取出完整路径，不再需要通过 CurrentRootPath 去拼凑
+            string? fullPath = selectedItem.Tag as string;
+
+            if (string.IsNullOrEmpty(fullPath)) return;
+
+            // 检查选中的是否是真实存在的文件（排除点击文件夹的情况）
+            if (File.Exists(fullPath))
             {
                 try
                 {
-                    var headerObj = selectedItem.Header;
-                    if (headerObj is not string fileName || string.IsNullOrEmpty(fileName)) return;
-
-                    string filePath = System.IO.Path.Combine(_viewModel.CurrentRootPath!, fileName);
-
-                    if (File.Exists(filePath))
-                    {
-                        // 读取内容并抛给 ViewModel，触发 UI 自动同步更新（标题栏和编辑器代码）
-                        _viewModel.CodeContent = File.ReadAllText(filePath, Encoding.UTF8);
-                        _viewModel.WindowTitle = $"My Python IDE - {fileName}";
-                        _viewModel.ConsoleText += $"成功读取文件: {fileName}\n";
-                    }
+                    // 读取内容并抛给 ViewModel，触发 UI 自动同步更新
+                    _viewModel.CodeContent = File.ReadAllText(fullPath, Encoding.UTF8);
+                    _viewModel.WindowTitle = $"My Python IDE - {System.IO.Path.GetFileName(fullPath)}";
+                    _viewModel.ConsoleText += $"成功读取文件: {fullPath}\n";
                 }
                 catch (Exception ex)
                 {
