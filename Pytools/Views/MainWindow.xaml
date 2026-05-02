@@ -6,12 +6,12 @@
         xmlns:local="clr-namespace:Pytools.Views"
         xmlns:avalonedit="http://icsharpcode.net/sharpdevelop/avalonedit" xmlns:viewmodels="clr-namespace:Pytools.ViewModels" d:DataContext="{d:DesignInstance Type=viewmodels:MainViewModel}"
         mc:Ignorable="d"
-        Title="{Binding WindowTitle}" Height="600" Width="1000"
+        Title="{Binding WindowTitle}" Height="720" Width="1200"
         Background="#F0F0F0">
     <DockPanel>
 
-        <ToolBarTray DockPanel.Dock="Top">
-            <ToolBar HorizontalAlignment="Right" >
+        <StackPanel DockPanel.Dock="Top">
+            <ToolBar HorizontalAlignment="Left" >
                 <Button Content="📄 新建" Padding="5,2" Margin="2"/>
                 <!-- 替换 Click 为 Command 绑定 -->
                 <Button Name="OpenFileBtn" Command="{Binding OpenFileCommand}" Padding="5,2" Margin="2">
@@ -30,8 +30,26 @@
                 <Button Content="💾 保存" Padding="5,2" Margin="2"/>
                 <Button Content="▶ 运行" Padding="5,2" Margin="2"/>
             </ToolBar>
-        </ToolBarTray>
+            <!-- 2. 新增：当前文件路径显示区 (贯穿全行) -->
+            <Border Background="White" BorderBrush="#DCDCDC" BorderThickness="0,1,0,1" Padding="8,3">
+                <StackPanel Orientation="Horizontal">
+                    <!-- 左侧小文件夹图标 -->
+                    <Path Data="M20,18H4V8H20M20,6H12L10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6Z" 
+                     Fill="#F8D775" Stretch="Uniform" Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <!-- 路径文本：绑定到 ViewModel 的 ActiveFilePath -->
+                    <TextBlock Text="{Binding ActiveFilePath, FallbackValue='未打开任何文件'}" 
+                          Foreground="#666666" 
+                          VerticalAlignment="Center" 
+                          FontSize="11.5"
+                          FontFamily="Consolas"/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+        
 
+              
+
+        <!--底部状态栏-->
         <StatusBar DockPanel.Dock="Bottom" Height="25" Background="#E0E0E0">
             <StatusBarItem Content="Python 3.12 (.NET8)" />
         </StatusBar>
@@ -67,7 +85,7 @@
             </Border>
             <!-- ========= 第1列：垂直分割条 ========= -->
             <GridSplitter Grid.Column="1" 
-                          Width="4" 
+                          Width="2" 
                           HorizontalAlignment="Stretch" 
                           Background="#DDD"/>
             <!-- ========= 第2列：代码编辑器区域 ========= -->
@@ -82,7 +100,7 @@
                 </Border>
             </Grid>
             <!-- ========= 第3列：第二个分割条 ========= -->
-            <GridSplitter Grid.Column="3" Width="4" HorizontalAlignment="Stretch" Background="Transparent"/>
+            <GridSplitter Grid.Column="3" Width="1" HorizontalAlignment="Stretch" Background="Transparent"/>
 
             <!-- ========= 第4列：右侧面板 ========= -->
             <Grid Grid.Column="4">

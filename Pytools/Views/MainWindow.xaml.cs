@@ -143,6 +143,7 @@ namespace Pytools.Views
                     // 读取内容并抛给 ViewModel，触发 UI 自动同步更新
                     _viewModel.CodeContent = File.ReadAllText(fullPath, Encoding.UTF8);
                     _viewModel.WindowTitle = $"My Python IDE - {System.IO.Path.GetFileName(fullPath)}";
+                    _viewModel.ActiveFilePath = fullPath; // 更新当前活动文件路径
                     _viewModel.ConsoleText += $"成功读取文件: {fullPath}\n";
                 }
                 catch (Exception ex)

@@ -18,8 +18,15 @@ namespace Pytools.ViewModels
         private string _consoleText = "Python 3.12.1 | Console Ready\n";
         private string? _currentRootPath;
         private string _codeContent = "";
+        // 在 MainViewModel 类中新增一个属性
+        private string _activeFilePath = "请打开文件或文件夹以开始项目";
 
 
+        public string ActiveFilePath
+        {
+            get => _activeFilePath;
+            set { _activeFilePath = value; OnPropertyChanged(); }
+        }
 
         // 绑定到窗口标题栏
         public string WindowTitle
@@ -71,6 +78,8 @@ namespace Pytools.ViewModels
                 }
 
                 CurrentRootPath = dialog.FolderName; // 触发 UI 刷新树
+                // --- 新增：同步更新路径显示栏为文件夹路径 ---
+                ActiveFilePath = dialog.FolderName;
                 ConsoleText += $"当前项目路径: {CurrentRootPath}\n";
             }
         }
@@ -94,6 +103,7 @@ namespace Pytools.ViewModels
 
                     // 读取内容并更新状态
                     CodeContent = File.ReadAllText(filePath, Encoding.UTF8);
+                    ActiveFilePath = filePath; // 更新当前活动文件路径
                     WindowTitle = $"My Python IDE - {Path.GetFileName(filePath)}";
                     ConsoleText += $"已打开文件并载入目录: {Path.GetFileName(filePath)}\n";
                 }
