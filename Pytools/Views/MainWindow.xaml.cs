@@ -86,17 +86,17 @@ namespace Pytools.Views
         /// 递归生成目录树节点的核心方法
         private TreeViewItem CreateDirectoryNode(string path)
         {
+            string folderName = System.IO.Path.GetFileName(path);
+            if (string.IsNullOrEmpty(folderName))
+            {
+                folderName = path;
+            }
+
             var node = new TreeViewItem
             {
-                Header = System.IO.Path.GetFileName(path),
+                Header = BuildFolderHeader(folderName),
                 Tag = path // 重点：将该文件夹的完整绝对路径存入 Tag
             };
-
-            // 如果选择了磁盘根目录（如 "C:\"），GetFileName 会返回空，此时直接用路径作为 Header
-            if (string.IsNullOrEmpty(node.Header.ToString()))
-            {
-                node.Header = path;
-            }
 
             try
             {
@@ -111,7 +111,7 @@ namespace Pytools.Views
                 {
                     node.Items.Add(new TreeViewItem
                     {
-                        Header = System.IO.Path.GetFileName(file),
+                        Header = BuildFileHeader(System.IO.Path.GetFileName(file)),
                         Tag = file // 重点：将文件的完整绝对路径存入 Tag
                     });
                 }
@@ -122,6 +122,38 @@ namespace Pytools.Views
             }
 
             return node;
+        }
+
+        private static StackPanel BuildFolderHeader(string folderName)
+        {
+            var panel = new StackPanel { Orientation = Orientation.Horizontal };
+            panel.Children.Add(new TextBlock
+            {
+                Text = "📁",
+                Margin = new Thickness(0, 0, 6, 0)
+            });
+            panel.Children.Add(new TextBlock
+            {
+                Text = folderName,
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1F4E8C")),
+                FontWeight = FontWeights.SemiBold
+            });
+            return panel;
+        }
+
+        private static StackPanel BuildFileHeader(string fileName)
+        {
+            var panel = new StackPanel { Orientation = Orientation.Horizontal };
+            panel.Children.Add(new TextBlock
+            {
+                Text = "📄",
+                Margin = new Thickness(0, 0, 6, 0)
+            });
+            panel.Children.Add(new TextBlock
+            {
+                Text = fileName
+            });
+            return panel;
         }
 
         /// 当用户点击左侧树状列表中的项时触发

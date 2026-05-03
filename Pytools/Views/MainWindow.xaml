@@ -8,6 +8,25 @@
         mc:Ignorable="d"
         Title="{Binding WindowTitle}" Height="720" Width="1200"
         Background="#F0F0F0">
+    <Window.Resources>
+        <Style x:Key="MatlabTreeViewItemStyle" TargetType="TreeViewItem">
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="2,1"/>
+            <Setter Property="Margin" Value="0,1,0,1"/>
+            <Setter Property="Foreground" Value="#2E2E2E"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#DCEBFF"/>
+                    <Setter Property="Foreground" Value="#003A70"/>
+                    <Setter Property="FontWeight" Value="SemiBold"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
     <DockPanel>
 
         <StackPanel DockPanel.Dock="Top">
@@ -65,18 +84,19 @@
                 <ColumnDefinition Width="4*" />
             </Grid.ColumnDefinitions>
             <!-- ========= 列0：项目资源管理器 ========= -->
-            <Border Grid.Column="0" 
-                    Background="#F5F5F5" 
-                    BorderBrush="#C0C0C0" 
+            <Border Grid.Column="0"
+                    Background="#FFFFFF"
+                    BorderBrush="#C0C0C0"
                     BorderThickness="0,0,1,0">
                 <DockPanel>
-                    <TextBlock Text="项目资源管理器" 
-                               DockPanel.Dock="Top" 
-                               Margin="5" 
-                               FontWeight="Bold" 
-                               Foreground="#666"/>
+                    <Border DockPanel.Dock="Top" Background="#EAF2FF" BorderBrush="#C9DDFB" BorderThickness="0,0,0,1" Padding="6,5">
+                        <TextBlock Text="Current Folder"
+                                   FontWeight="Bold"
+                                   Foreground="#2A4A7B"/>
+                    </Border>
                     <!-- 项目树形视图 -->
                     <TreeView Name="ProjectTreeView"
+                              ItemContainerStyle="{StaticResource MatlabTreeViewItemStyle}"
                               BorderThickness="0" 
                               Background="Transparent"
                               SelectedItemChanged="ProjectTreeView_SelectedItemChanged">
