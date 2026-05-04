@@ -11,6 +11,9 @@
                 <ui:ThemeResources />
                 <!-- 基础控件样式 -->
                 <ui:XamlControlsResources />
+                <!-- 2. 新增 Material Design 核心资源 -->
+                <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.Light.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesign3.Defaults.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

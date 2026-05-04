@@ -78,10 +78,22 @@
                     <!-- DockWidth 对应你原有的 ColumnDefinition Width="150" -->
                     <xcad:LayoutAnchorablePane DockWidth="150">
                         <xcad:LayoutAnchorable x:Name="ExplorerWindow" Title="项目资源管理器" CanClose="False" CanHide="False" CanAutoHide="False" >
+                            
                             <!-- 你的原版 TreeView，ModernWPF 会自动接管其样式 -->
                             <TreeView Name="ProjectTreeView"
-                                  BorderThickness="0" Background="Transparent"
-                                  SelectedItemChanged="ProjectTreeView_SelectedItemChanged" />
+                                  BorderThickness="0" 
+                                  Background="Transparent"
+                                  xmlns:md="http://materialdesigninxaml.net/winfx/xaml/themes"
+                                  Style="{StaticResource MaterialDesignTreeView}"
+                                  SelectedItemChanged="ProjectTreeView_SelectedItemChanged" >
+                             <!-- 使用 MDIX 提供的默认辅助样式，会让选中的节点有漂亮的波纹和高亮 -->
+                               <TreeView.ItemContainerStyle>
+                                 <Style TargetType="TreeViewItem" BasedOn="{StaticResource MaterialDesignTreeViewItem}">
+                                     <Setter Property="Padding" Value="8,4"/>
+                                 </Style>
+                               </TreeView.ItemContainerStyle>
+                            </TreeView>
+
                         </xcad:LayoutAnchorable>
                     </xcad:LayoutAnchorablePane>
 
