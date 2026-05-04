@@ -31,7 +31,7 @@
                         Content="📂 打开文件夹" 
                         Padding="5,2" 
                         Margin="2"/>
-                <Button Content="💾 保存" Padding="5,2" Margin="2"/>
+                <Button Content="💾 保存" Command="{Binding SaveCommand}" Padding="5,2" Margin="2"/>
                 <Button Content="▶ 运行" Padding="5,2" Margin="2"/>
             </ToolBar>
             <!-- 2. 新增：当前文件路径显示区 (贯穿全行) -->
@@ -99,13 +99,23 @@
 
                     <!-- ========= 中间：代码编辑器区域 ========= -->
                     <!-- LayoutDocumentPane 专门用于放置类似代码编辑器的主文档 -->
-                    <xcad:LayoutDocumentPane>
-                        <xcad:LayoutDocument x:Name="CodeEditorWindow" Title="未命名.py" CanClose="True">
-                            <avalonedit:TextEditor Name="CodeEditor" 
-                               FontFamily="Consolas" FontSize="13"
-                               ShowLineNumbers="True" SyntaxHighlighting="Python"
-                               VerticalScrollBarVisibility="Auto"/>
-                        </xcad:LayoutDocument>
+                    <xcad:LayoutDocumentPane ItemsSource="{Binding Files}" SelectedContent="{Binding SelectedFile, Mode=TwoWay}">
+                        <xcad:LayoutDocumentPane.DocumentTitleTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding FileName}" />
+                            </DataTemplate>
+                        </xcad:LayoutDocumentPane.DocumentTitleTemplate>
+                        <xcad:LayoutDocumentPane.DocumentContentTemplate>
+                            <DataTemplate>
+                                <avalonedit:TextEditor FontFamily="Consolas"
+                                                       FontSize="13"
+                                                       ShowLineNumbers="True"
+                                                       SyntaxHighlighting="Python"
+                                                       VerticalScrollBarVisibility="Auto"
+                                                       Loaded="Editor_Loaded"
+                                                       TextChanged="Editor_TextChanged"/>
+                            </DataTemplate>
+                        </xcad:LayoutDocumentPane.DocumentContentTemplate>
                     </xcad:LayoutDocumentPane>
 
                     <!-- ========= 右侧：面板区域 ========= -->

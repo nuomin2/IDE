@@ -1,26 +1,67 @@
-﻿using System.ComponentModel;
+﻿using System;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Windows.Input;
 using Microsoft.Win32;
 using Pytools.Commands;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace Pytools.ViewModels
 {
+    public class OpenedFileViewModel : INotifyPropertyChanged
+    {
+        private string _fileName = string.Empty;
+        private string _filePath = string.Empty;
+        private string _content = string.Empty;
+        private bool _isDirty;
+
+        public string FileName
+        {
+            get => _fileName;
+            set { _fileName = value; OnPropertyChanged(); }
+        }
+
+        public string FilePath
+        {
+            get => _filePath;
+            set { _filePath = value; OnPropertyChanged(); }
+        }
+
+        public string Content
+        {
+            get => _content;
+            set { _content = value; OnPropertyChanged(); }
+        }
+
+        public bool IsDirty
+        {
+            get => _isDirty;
+            set { _isDirty = value; OnPropertyChanged(); }
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        protected void OnPropertyChanged([CallerMemberName] string? name = null) =>
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+    }
+
     public class MainViewModel : INotifyPropertyChanged
     {
         private string _windowTitle = "My Python IDE";
         private string _consoleText = "Python 3.12.1 | Console Ready\n";
         private string? _currentRootPath;
-        private string _codeContent = "";
-        // 在 MainViewModel 类中新增一个属性
         private string _activeFilePath = "请打开文件或文件夹以开始项目";
+        private OpenedFileViewModel? _selectedFile;
 
+        public MainViewModel()
+        {
+            Files = new ObservableCollection<OpenedFileViewModel>();
+            OpenFolderCommand = new RelayCommand(_ => ExecuteOpenFolder());
+            OpenFileCommand = new RelayCommand(_ => ExecuteOpenFile());
+            SaveCommand = new RelayCommand(_ => ExecuteSave(), _ => SelectedFile is not null);
+        }
 
         public string ActiveFilePath
         {
@@ -28,43 +69,44 @@ namespace Pytools.ViewModels
             set { _activeFilePath = value; OnPropertyChanged(); }
         }
 
-        // 绑定到窗口标题栏
         public string WindowTitle
         {
             get => _windowTitle;
-            // 当窗口标题被设置时，更新字段并触发属性更改通知以刷新绑定到 UI 的标题
             set { _windowTitle = value; OnPropertyChanged(); }
         }
 
-        // 绑定到控制台输出
         public string ConsoleText
         {
             get => _consoleText;
             set { _consoleText = value; OnPropertyChanged(); }
         }
 
-        // 绑定到代码编辑器内容
-        public string CodeContent
-        {
-            get => _codeContent;
-            set { _codeContent = value; OnPropertyChanged(); }
-        }
-
-        // 核心信号：当此路径改变时，通知 View 刷新树状列表
         public string? CurrentRootPath
         {
             get => _currentRootPath;
             set { _currentRootPath = value; OnPropertyChanged(); }
         }
 
-        public ICommand OpenFolderCommand { get; }  ///只读属性，类型为 ICommand，命令模式接口，用于绑定 UI 中的打开文件夹操作
-        public ICommand OpenFileCommand { get; }  ///只读属性，类型为 ICommand，命令模式接口，用于绑定 UI 中的打开文件操作
+        public ObservableCollection<OpenedFileViewModel> Files { get; }
 
-        public MainViewModel()
+        public OpenedFileViewModel? SelectedFile
         {
-            OpenFolderCommand = new RelayCommand(_ => ExecuteOpenFolder());
-            OpenFileCommand = new RelayCommand(_ => ExecuteOpenFile());
+            get => _selectedFile;
+            set
+            {
+                _selectedFile = value;
+                OnPropertyChanged();
+                ActiveFilePath = value?.FilePath ?? "请打开文件或文件夹以开始项目";
+                if (value is not null)
+                {
+                    WindowTitle = $"My Python IDE - {value.FileName}";
+                }
+            }
         }
+
+        public ICommand OpenFolderCommand { get; }
+        public ICommand OpenFileCommand { get; }
+        public ICommand SaveCommand { get; }
 
         private void ExecuteOpenFolder()
         {
@@ -77,8 +119,7 @@ namespace Pytools.ViewModels
                     return;
                 }
 
-                CurrentRootPath = dialog.FolderName; // 触发 UI 刷新树
-                // --- 新增：同步更新路径显示栏为文件夹路径 ---
+                CurrentRootPath = dialog.FolderName;
                 ActiveFilePath = dialog.FolderName;
                 ConsoleText += $"当前项目路径: {CurrentRootPath}\n";
             }
@@ -86,8 +127,10 @@ namespace Pytools.ViewModels
 
         private void ExecuteOpenFile()
         {
-            OpenFileDialog openFileDialog = new OpenFileDialog();
-            openFileDialog.Filter = "Python files (*.py)|*.py|All files (*.*)|*.*";
+            OpenFileDialog openFileDialog = new OpenFileDialog
+            {
+                Filter = "Python files (*.py)|*.py|All files (*.*)|*.*"
+            };
 
             if (openFileDialog.ShowDialog() == true)
             {
@@ -98,13 +141,23 @@ namespace Pytools.ViewModels
 
                     if (!string.IsNullOrEmpty(folderPath))
                     {
-                        CurrentRootPath = folderPath; // 触发 UI 刷新树
+                        CurrentRootPath = folderPath;
                     }
 
-                    // 读取内容并更新状态
-                    CodeContent = File.ReadAllText(filePath, Encoding.UTF8);
-                    ActiveFilePath = filePath; // 更新当前活动文件路径
-                    WindowTitle = $"My Python IDE - {Path.GetFileName(filePath)}";
+                    var existing = FindOpenedFile(filePath);
+                    if (existing is null)
+                    {
+                        existing = new OpenedFileViewModel
+                        {
+                            FileName = Path.GetFileName(filePath),
+                            FilePath = filePath,
+                            Content = File.ReadAllText(filePath, Encoding.UTF8),
+                            IsDirty = false
+                        };
+                        Files.Add(existing);
+                    }
+
+                    SelectedFile = existing;
                     ConsoleText += $"已打开文件并载入目录: {Path.GetFileName(filePath)}\n";
                 }
                 catch (Exception ex)
@@ -113,24 +166,42 @@ namespace Pytools.ViewModels
                 }
             }
         }
-        //事件和委托
+
+        private void ExecuteSave()
+        {
+            if (SelectedFile is null)
+            {
+                return;
+            }
+
+            try
+            {
+                File.WriteAllText(SelectedFile.FilePath, SelectedFile.Content, Encoding.UTF8);
+                SelectedFile.IsDirty = false;
+                ConsoleText += $"保存成功: {SelectedFile.FilePath}\n";
+            }
+            catch (Exception ex)
+            {
+                ConsoleText += $"保存失败: {ex.Message}\n";
+            }
+        }
+
+        public OpenedFileViewModel? FindOpenedFile(string filePath)
+        {
+            foreach (var file in Files)
+            {
+                if (string.Equals(file.FilePath, filePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    return file;
+                }
+            }
+
+            return null;
+        }
+
         public event PropertyChangedEventHandler? PropertyChanged;
 
-        //PropertyChangedEventHandler是委托类型，表示属性更改事件的处理方法。
-        //当属性值发生变化时，调用OnPropertyChanged方法触发事件，通知UI更新绑定到该属性的元素。
-
-        // CallerMemberName特性允许在调用OnPropertyChanged方法时自动获取调用者的成员名称（属性名称），从而简化代码并减少错误。
-
-        //OnPropertyChanged方法接受一个可选的字符串参数name，表示发生变化的属性名称。
-        //如果调用时未提供该参数，编译器会自动将调用者的成员名称传递给它。
         protected void OnPropertyChanged([CallerMemberName] string? name = null) =>
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-
-        /*总结!!!*/
-        // PropertyChanged 是一个事件，类型为 PropertyChangedEventHandler。
-        // 当属性值发生变化时，调用 OnPropertyChanged 方法触发该事件，通知 UI 更新绑定到该属性的元素。
-        //
-
-
     }
 }
