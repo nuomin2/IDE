@@ -23,6 +23,7 @@ namespace Pytools.Views
         public MainWindow()
         {
             InitializeComponent();
+           
 
             // 初始化并绑定 ViewModel
             _viewModel = new MainViewModel();

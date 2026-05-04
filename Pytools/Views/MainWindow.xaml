@@ -1,5 +1,9 @@
 ﻿<Window x:Class="Pytools.Views.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:ui="http://schemas.modernwpf.com/2019"
+        ui:WindowHelper.UseModernWindowStyle="True"
+        xmlns:xcad="https://github.com/Dirkster99/AvalonDock"
+        xmlns:xcadTheme="clr-namespace:AvalonDock.Themes;assembly=AvalonDock.Themes.Vs2013"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -56,83 +60,74 @@
 
         <!-- ======================== 主工作区网格布局 ======================== -->
         <!-- 保持原有5列布局不变 -->
-        <Grid>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="150" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="6*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="4*" />
-            </Grid.ColumnDefinitions>
-            <!-- ========= 列0：项目资源管理器 ========= -->
-            <Border Grid.Column="0" 
-                    Background="#F5F5F5" 
-                    BorderBrush="#C0C0C0" 
-                    BorderThickness="0,0,1,0">
-                <DockPanel>
-                    <TextBlock Text="项目资源管理器" 
-                               DockPanel.Dock="Top" 
-                               Margin="5" 
-                               FontWeight="Bold" 
-                               Foreground="#666"/>
-                    <!-- 项目树形视图 -->
-                    <TreeView Name="ProjectTreeView"
-                              BorderThickness="0" 
-                              Background="Transparent"
-                              SelectedItemChanged="ProjectTreeView_SelectedItemChanged">
-                    </TreeView>
-                </DockPanel>
-            </Border>
-            <!-- ========= 第1列：垂直分割条 ========= -->
-            <GridSplitter Grid.Column="1" 
-                          Width="2" 
-                          HorizontalAlignment="Stretch" 
-                          Background="#DDD"/>
-            <!-- ========= 第2列：代码编辑器区域 ========= -->
-            <Grid Grid.Column="2" Margin="2">
-                <Border BorderBrush="#C0C0C0" BorderThickness="1" Background="White">
-                    <avalonedit:TextEditor Name="CodeEditor" 
-                           FontFamily="Consolas" 
-                           FontSize="13"
-                           ShowLineNumbers="True" 
-                           SyntaxHighlighting="Python"
-                           VerticalScrollBarVisibility="Auto"/>
-                </Border>
-            </Grid>
-            <!-- ========= 第3列：第二个分割条 ========= -->
-            <GridSplitter Grid.Column="3" Width="1" HorizontalAlignment="Stretch" Background="Transparent"/>
+        <xcad:DockingManager x:Name="dockingManager"
+                             Background="Transparent"
+                             AllowMixedOrientation="True" 
+                             VerticalAlignment="Stretch"  
+                             HorizontalAlignment="Stretch" 
+                             Margin="2">
+            <!-- 设置 AvalonDock 的主题，使其融入整体风格 -->
+            <xcad:DockingManager.Theme>
+                <xcadTheme:Vs2013LightTheme />
+            </xcad:DockingManager.Theme>
 
-            <!-- ========= 第4列：右侧面板 ========= -->
-            <Grid Grid.Column="4">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="1*" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="1*" />
-                </Grid.RowDefinitions>
-                <TabControl Grid.Row="0" Margin="2">
-                    <TabItem Header="Variable Explorer">
-                        <DataGrid Name="VariableGrid" AutoGenerateColumns="True" Background="White" BorderThickness="0"/>
-                    </TabItem>
-                    <TabItem Header="Debugger" />
-                </TabControl>
+            <xcad:LayoutRoot>
+                <xcad:LayoutPanel Orientation="Horizontal">
 
-                <GridSplitter Grid.Row="1" Height="4" HorizontalAlignment="Stretch" Background="Transparent"/>
+                    <!-- ========= 左侧：项目资源管理器 ========= -->
+                    <!-- DockWidth 对应你原有的 ColumnDefinition Width="150" -->
+                    <xcad:LayoutAnchorablePane DockWidth="150">
+                        <xcad:LayoutAnchorable x:Name="ExplorerWindow" Title="项目资源管理器" CanClose="False" CanHide="False" CanAutoHide="False" >
+                            <!-- 你的原版 TreeView，ModernWPF 会自动接管其样式 -->
+                            <TreeView Name="ProjectTreeView"
+                                  BorderThickness="0" Background="Transparent"
+                                  SelectedItemChanged="ProjectTreeView_SelectedItemChanged" />
+                        </xcad:LayoutAnchorable>
+                    </xcad:LayoutAnchorablePane>
 
-                <TabControl Grid.Row="2" Margin="2">
-                    <TabItem Header="IPython Console">
-                        <Border Background="#1E1E1E">
-                            <ScrollViewer>
-                                <!-- 绑定到 ViewModel 的 ConsoleText -->
-                                <TextBlock Name="ConsoleOutput" 
-                                           Foreground="#DCDCDC" FontFamily="Consolas" 
-                                           FontSize="12" Padding="10" TextWrapping="Wrap" 
-                                           Text="{Binding ConsoleText}" />
-                            </ScrollViewer>
-                        </Border>
-                    </TabItem>
-                    <TabItem Header="History" />
-                </TabControl>
-            </Grid>
-        </Grid>
+                    <!-- ========= 中间：代码编辑器区域 ========= -->
+                    <!-- LayoutDocumentPane 专门用于放置类似代码编辑器的主文档 -->
+                    <xcad:LayoutDocumentPane>
+                        <xcad:LayoutDocument x:Name="CodeEditorWindow" Title="未命名.py" CanClose="True">
+                            <avalonedit:TextEditor Name="CodeEditor" 
+                               FontFamily="Consolas" FontSize="13"
+                               ShowLineNumbers="True" SyntaxHighlighting="Python"
+                               VerticalScrollBarVisibility="Auto"/>
+                        </xcad:LayoutDocument>
+                    </xcad:LayoutDocumentPane>
+
+                    <!-- ========= 右侧：面板区域 ========= -->
+                    <!-- DockWidth="400" 大致对应你原有的 Width="4*" 比例 -->
+                    <xcad:LayoutPanel Orientation="Vertical" DockWidth="400">
+
+                        <!-- 右侧上方：变量与调试器 (原先的第一个 TabControl) -->
+                        <xcad:LayoutAnchorablePane>
+                            <xcad:LayoutAnchorable Title="Variable Explorer" CanHide="False" CanAutoHide="False">
+                                <!-- 你的 DataGrid，ModernWPF 会自动接管其样式 -->
+                                <DataGrid Name="VariableGrid" AutoGenerateColumns="True" 
+                                      Background="White" BorderThickness="0"/>
+                            </xcad:LayoutAnchorable>
+                            <xcad:LayoutAnchorable Title="Debugger" CanHide="False" CanAutoHide="False"/>
+                        </xcad:LayoutAnchorablePane>
+
+                        <!-- 右侧下方：控制台与历史 (原先的第二个 TabControl) -->
+                        <xcad:LayoutAnchorablePane>
+                            <xcad:LayoutAnchorable Title="IPython Console" CanHide="False" CanAutoHide="False">
+                                <Border Background="#1E1E1E">
+                                    <ScrollViewer>
+                                        <TextBlock Name="ConsoleOutput" 
+                                               Foreground="#DCDCDC" FontFamily="Consolas" 
+                                               FontSize="12" Padding="10" TextWrapping="Wrap" 
+                                               Text="{Binding ConsoleText}" />
+                                    </ScrollViewer>
+                                </Border>
+                            </xcad:LayoutAnchorable>
+                            <xcad:LayoutAnchorable Title="History" />
+                        </xcad:LayoutAnchorablePane>
+
+                    </xcad:LayoutPanel>
+                </xcad:LayoutPanel>
+            </xcad:LayoutRoot>
+        </xcad:DockingManager>
     </DockPanel>
 </Window>
