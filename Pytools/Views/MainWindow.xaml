@@ -31,7 +31,7 @@
                         Content="📂 打开文件夹" 
                         Padding="5,2" 
                         Margin="2"/>
-                <Button Content="💾 保存" Padding="5,2" Margin="2"/>
+                <Button Content="💾 保存" Command="{Binding SaveCommand}" Padding="5,2" Margin="2"/>
                 <Button Content="▶ 运行" Padding="5,2" Margin="2"/>
             </ToolBar>
             <!-- 2. 新增：当前文件路径显示区 (贯穿全行) -->
@@ -61,11 +61,29 @@
         <!-- ======================== 主工作区网格布局 ======================== -->
         <!-- 保持原有5列布局不变 -->
         <xcad:DockingManager x:Name="dockingManager"
+                             DocumentsSource="{Binding Files}"
+                             ActiveContent="{Binding SelectedFile, Mode=TwoWay}"
                              Background="Transparent"
                              AllowMixedOrientation="True" 
                              VerticalAlignment="Stretch"  
                              HorizontalAlignment="Stretch" 
                              Margin="2">
+            <xcad:DockingManager.LayoutItemTemplate>
+                <DataTemplate>
+                    <TextBlock Text="{Binding Model.FileName}" />
+                </DataTemplate>
+            </xcad:DockingManager.LayoutItemTemplate>
+            <xcad:DockingManager.DocumentTemplate>
+                <DataTemplate>
+                    <avalonedit:TextEditor FontFamily="Consolas"
+                                           FontSize="13"
+                                           ShowLineNumbers="True"
+                                           SyntaxHighlighting="Python"
+                                           VerticalScrollBarVisibility="Auto"
+                                           Loaded="Editor_Loaded"
+                                           TextChanged="Editor_TextChanged"/>
+                </DataTemplate>
+            </xcad:DockingManager.DocumentTemplate>
             <!-- 设置 AvalonDock 的主题，使其融入整体风格 -->
             <xcad:DockingManager.Theme>
                 <xcadTheme:Vs2013LightTheme />
@@ -99,14 +117,7 @@
 
                     <!-- ========= 中间：代码编辑器区域 ========= -->
                     <!-- LayoutDocumentPane 专门用于放置类似代码编辑器的主文档 -->
-                    <xcad:LayoutDocumentPane>
-                        <xcad:LayoutDocument x:Name="CodeEditorWindow" Title="未命名.py" CanClose="True">
-                            <avalonedit:TextEditor Name="CodeEditor" 
-                               FontFamily="Consolas" FontSize="13"
-                               ShowLineNumbers="True" SyntaxHighlighting="Python"
-                               VerticalScrollBarVisibility="Auto"/>
-                        </xcad:LayoutDocument>
-                    </xcad:LayoutDocumentPane>
+                    <xcad:LayoutDocumentPane />
 
                     <!-- ========= 右侧：面板区域 ========= -->
                     <!-- DockWidth="400" 大致对应你原有的 Width="4*" 比例 -->
