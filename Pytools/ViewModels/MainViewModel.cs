@@ -7,6 +7,7 @@ using System.Windows.Input;
 using Microsoft.Win32;
 using Pytools.Commands;
 using Pytools.Models;
+using Pytools.Services;
 
 namespace Pytools.ViewModels
 {
@@ -15,6 +16,9 @@ namespace Pytools.ViewModels
         private string _consoleText = "Python 3.12.1 | Console Ready\n";
         private string? _currentRootPath;
         private DocumentModel? _activeDocument;
+        private readonly FileWatcherService _fileWatcher;
+
+        public event Action? TreeRefreshRequested;
 
         public ObservableCollection<DocumentModel> Documents { get; } = new();
 
@@ -76,7 +80,17 @@ namespace Pytools.ViewModels
         public string? CurrentRootPath
         {
             get => _currentRootPath;
-            set { _currentRootPath = value; OnPropertyChanged(); }
+            set
+            {
+                if (_currentRootPath == value) return;
+                _currentRootPath = value;
+                OnPropertyChanged();
+
+                if (!string.IsNullOrEmpty(value))
+                    _fileWatcher.Start(value);
+                else
+                    _fileWatcher.Stop();
+            }
         }
 
         public ICommand OpenFolderCommand { get; }
@@ -90,6 +104,9 @@ namespace Pytools.ViewModels
             OpenFileCommand = new RelayCommand(_ => ExecuteOpenFile());
             SaveCommand = new RelayCommand(_ => ExecuteSave());
             NewCommand = new RelayCommand(_ => ExecuteNew());
+
+            _fileWatcher = new FileWatcherService("*.py", 200);
+            _fileWatcher.FilesChanged += () => TreeRefreshRequested?.Invoke();
         }
 
         public void CreateStartupPage()

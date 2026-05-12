@@ -25,6 +25,11 @@ namespace Pytools.Views
 
             _viewModel.Documents.CollectionChanged += OnDocumentsCollectionChanged;
             _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+            _viewModel.TreeRefreshRequested += () =>
+            {
+                if (!string.IsNullOrEmpty(_viewModel.CurrentRootPath))
+                    LoadDirectory(_viewModel.CurrentRootPath);
+            };
 
             _viewModel.CreateStartupPage();
         }
