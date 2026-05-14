@@ -8,7 +8,9 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Pytools.Views"
-        xmlns:avalonedit="http://icsharpcode.net/sharpdevelop/avalonedit" xmlns:viewmodels="clr-namespace:Pytools.ViewModels" d:DataContext="{d:DesignInstance Type=viewmodels:MainViewModel}"
+        xmlns:avalonedit="http://icsharpcode.net/sharpdevelop/avalonedit"
+        xmlns:viewmodels="clr-namespace:Pytools.ViewModels"
+        d:DataContext="{d:DesignInstance Type=viewmodels:MainViewModel}"
         mc:Ignorable="d"
         Title="{Binding WindowTitle}" Height="720" Width="1200"
         Background="#F0F0F0">
@@ -16,7 +18,7 @@
 
         <StackPanel DockPanel.Dock="Top">
             <ToolBar HorizontalAlignment="Left" >
-                <Button Content="📄 新建" Padding="5,2" Margin="2"/>
+                <Button Content="📄 新建" Command="{Binding NewCommand}" Padding="5,2" Margin="2"/>
                 <!-- 替换 Click 为 Command 绑定 -->
                 <Button Name="OpenFileBtn" Command="{Binding OpenFileCommand}" Padding="5,2" Margin="2">
                     <StackPanel Orientation="Horizontal">
@@ -31,7 +33,7 @@
                         Content="📂 打开文件夹" 
                         Padding="5,2" 
                         Margin="2"/>
-                <Button Content="💾 保存" Padding="5,2" Margin="2"/>
+                <Button Content="💾 保存" Command="{Binding SaveCommand}" Padding="5,2" Margin="2"/>
                 <Button Content="▶ 运行" Padding="5,2" Margin="2"/>
             </ToolBar>
             <!-- 2. 新增：当前文件路径显示区 (贯穿全行) -->
@@ -62,11 +64,10 @@
         <!-- 保持原有5列布局不变 -->
         <xcad:DockingManager x:Name="dockingManager"
                              Background="Transparent"
-                             AllowMixedOrientation="True" 
-                             VerticalAlignment="Stretch"  
-                             HorizontalAlignment="Stretch" 
+                             AllowMixedOrientation="True"
+                             VerticalAlignment="Stretch"
+                             HorizontalAlignment="Stretch"
                              Margin="2">
-            <!-- 设置 AvalonDock 的主题，使其融入整体风格 -->
             <xcad:DockingManager.Theme>
                 <xcadTheme:Vs2013LightTheme />
             </xcad:DockingManager.Theme>
@@ -74,62 +75,42 @@
             <xcad:LayoutRoot>
                 <xcad:LayoutPanel Orientation="Horizontal">
 
-                    <!-- ========= 左侧：项目资源管理器 ========= -->
-                    <!-- DockWidth 对应你原有的 ColumnDefinition Width="150" -->
                     <xcad:LayoutAnchorablePane DockWidth="150">
-                        <xcad:LayoutAnchorable x:Name="ExplorerWindow" Title="项目资源管理器" CanClose="False" CanHide="False" CanAutoHide="False" >
-                            
-                            <!-- 你的原版 TreeView，ModernWPF 会自动接管其样式 -->
+                        <xcad:LayoutAnchorable x:Name="ExplorerWindow" Title="项目资源管理器" CanClose="False" CanHide="False" CanAutoHide="False">
                             <TreeView Name="ProjectTreeView"
-                                  BorderThickness="0" 
+                                  BorderThickness="0"
                                   Background="Transparent"
                                   xmlns:md="http://materialdesigninxaml.net/winfx/xaml/themes"
                                   Style="{StaticResource MaterialDesignTreeView}"
-                                  SelectedItemChanged="ProjectTreeView_SelectedItemChanged" >
-                             <!-- 使用 MDIX 提供的默认辅助样式，会让选中的节点有漂亮的波纹和高亮 -->
+                                  SelectedItemChanged="ProjectTreeView_SelectedItemChanged">
                                <TreeView.ItemContainerStyle>
                                  <Style TargetType="TreeViewItem" BasedOn="{StaticResource MaterialDesignTreeViewItem}">
                                      <Setter Property="Padding" Value="8,4"/>
                                  </Style>
                                </TreeView.ItemContainerStyle>
                             </TreeView>
-
                         </xcad:LayoutAnchorable>
                     </xcad:LayoutAnchorablePane>
 
-                    <!-- ========= 中间：代码编辑器区域 ========= -->
-                    <!-- LayoutDocumentPane 专门用于放置类似代码编辑器的主文档 -->
-                    <xcad:LayoutDocumentPane>
-                        <xcad:LayoutDocument x:Name="CodeEditorWindow" Title="未命名.py" CanClose="True">
-                            <avalonedit:TextEditor Name="CodeEditor" 
-                               FontFamily="Consolas" FontSize="13"
-                               ShowLineNumbers="True" SyntaxHighlighting="Python"
-                               VerticalScrollBarVisibility="Auto"/>
-                        </xcad:LayoutDocument>
-                    </xcad:LayoutDocumentPane>
+                    <xcad:LayoutDocumentPane x:Name="DocumentPane"/>
 
-                    <!-- ========= 右侧：面板区域 ========= -->
-                    <!-- DockWidth="400" 大致对应你原有的 Width="4*" 比例 -->
                     <xcad:LayoutPanel Orientation="Vertical" DockWidth="400">
 
-                        <!-- 右侧上方：变量与调试器 (原先的第一个 TabControl) -->
                         <xcad:LayoutAnchorablePane>
                             <xcad:LayoutAnchorable Title="Variable Explorer" CanHide="False" CanAutoHide="False">
-                                <!-- 你的 DataGrid，ModernWPF 会自动接管其样式 -->
-                                <DataGrid Name="VariableGrid" AutoGenerateColumns="True" 
+                                <DataGrid Name="VariableGrid" AutoGenerateColumns="True"
                                       Background="White" BorderThickness="0"/>
                             </xcad:LayoutAnchorable>
                             <xcad:LayoutAnchorable Title="Debugger" CanHide="False" CanAutoHide="False"/>
                         </xcad:LayoutAnchorablePane>
 
-                        <!-- 右侧下方：控制台与历史 (原先的第二个 TabControl) -->
                         <xcad:LayoutAnchorablePane>
                             <xcad:LayoutAnchorable Title="IPython Console" CanHide="False" CanAutoHide="False">
                                 <Border Background="#1E1E1E">
                                     <ScrollViewer>
-                                        <TextBlock Name="ConsoleOutput" 
-                                               Foreground="#DCDCDC" FontFamily="Consolas" 
-                                               FontSize="12" Padding="10" TextWrapping="Wrap" 
+                                        <TextBlock Name="ConsoleOutput"
+                                               Foreground="#DCDCDC" FontFamily="Consolas"
+                                               FontSize="12" Padding="10" TextWrapping="Wrap"
                                                Text="{Binding ConsoleText}" />
                                     </ScrollViewer>
                                 </Border>

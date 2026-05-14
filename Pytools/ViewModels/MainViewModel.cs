@@ -1,74 +1,157 @@
-﻿using System.ComponentModel;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Windows.Input;
 using Microsoft.Win32;
 using Pytools.Commands;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+using Pytools.Models;
+using Pytools.Services;
 
 namespace Pytools.ViewModels
 {
     public class MainViewModel : INotifyPropertyChanged
     {
-        private string _windowTitle = "My Python IDE";
         private string _consoleText = "Python 3.12.1 | Console Ready\n";
         private string? _currentRootPath;
-        private string _codeContent = "";
-        // 在 MainViewModel 类中新增一个属性
-        private string _activeFilePath = "请打开文件或文件夹以开始项目";
+        private DocumentModel? _activeDocument;
+        private readonly FileWatcherService _fileWatcher;
 
+        public event Action? TreeRefreshRequested;
+
+        public ObservableCollection<DocumentModel> Documents { get; } = new();
+
+        public DocumentModel? ActiveDocument
+        {
+            get => _activeDocument;
+            set
+            {
+                if (_activeDocument == value) return;
+
+                if (_activeDocument != null)
+                    _activeDocument.PropertyChanged -= OnActiveDocumentPropertyChanged;
+
+                _activeDocument = value;
+
+                if (_activeDocument != null)
+                    _activeDocument.PropertyChanged += OnActiveDocumentPropertyChanged;
+
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(WindowTitle));
+                OnPropertyChanged(nameof(CodeContent));
+                OnPropertyChanged(nameof(ActiveFilePath));
+            }
+        }
+
+        public string WindowTitle =>
+            ActiveDocument is { } doc
+                ? $"My Python IDE - {doc.Title}"
+                : "My Python IDE";
+
+        public string CodeContent
+        {
+            get => ActiveDocument?.Content ?? "";
+            set
+            {
+                if (ActiveDocument != null)
+                    ActiveDocument.Content = value;
+            }
+        }
 
         public string ActiveFilePath
         {
-            get => _activeFilePath;
-            set { _activeFilePath = value; OnPropertyChanged(); }
+            get
+            {
+                if (ActiveDocument == null)
+                    return "请打开文件或文件夹以开始项目";
+                return string.IsNullOrEmpty(ActiveDocument.FilePath)
+                    ? ActiveDocument.Title
+                    : ActiveDocument.FilePath;
+            }
         }
 
-        // 绑定到窗口标题栏
-        public string WindowTitle
-        {
-            get => _windowTitle;
-            // 当窗口标题被设置时，更新字段并触发属性更改通知以刷新绑定到 UI 的标题
-            set { _windowTitle = value; OnPropertyChanged(); }
-        }
-
-        // 绑定到控制台输出
         public string ConsoleText
         {
             get => _consoleText;
             set { _consoleText = value; OnPropertyChanged(); }
         }
 
-        // 绑定到代码编辑器内容
-        public string CodeContent
-        {
-            get => _codeContent;
-            set { _codeContent = value; OnPropertyChanged(); }
-        }
-
-        // 核心信号：当此路径改变时，通知 View 刷新树状列表
         public string? CurrentRootPath
         {
             get => _currentRootPath;
-            set { _currentRootPath = value; OnPropertyChanged(); }
+            set
+            {
+                if (_currentRootPath == value) return;
+                _currentRootPath = value;
+                OnPropertyChanged();
+
+                if (!string.IsNullOrEmpty(value))
+                    _fileWatcher.Start(value);
+                else
+                    _fileWatcher.Stop();
+            }
         }
 
-        public ICommand OpenFolderCommand { get; }  ///只读属性，类型为 ICommand，命令模式接口，用于绑定 UI 中的打开文件夹操作
-        public ICommand OpenFileCommand { get; }  ///只读属性，类型为 ICommand，命令模式接口，用于绑定 UI 中的打开文件操作
+        public ICommand OpenFolderCommand { get; }
+        public ICommand OpenFileCommand { get; }
+        public ICommand SaveCommand { get; }
+        public ICommand NewCommand { get; }
 
         public MainViewModel()
         {
             OpenFolderCommand = new RelayCommand(_ => ExecuteOpenFolder());
             OpenFileCommand = new RelayCommand(_ => ExecuteOpenFile());
+            SaveCommand = new RelayCommand(_ => ExecuteSave());
+            NewCommand = new RelayCommand(_ => ExecuteNew());
+
+            _fileWatcher = new FileWatcherService("*.py", 200);
+            _fileWatcher.FilesChanged += () => TreeRefreshRequested?.Invoke();
+        }
+
+        public void CreateStartupPage()
+        {
+            var startPage = new DocumentModel
+            {
+                Title = "起始页",
+                Content = "Welcome",
+                FilePath = ""
+            };
+            Documents.Add(startPage);
+            ActiveDocument = startPage;
+        }
+
+        public void OpenOrActivateDocument(string filePath)
+        {
+            var existing = Documents.FirstOrDefault(d => d.FilePath == filePath);
+            if (existing != null)
+            {
+                ActiveDocument = existing;
+                return;
+            }
+
+            try
+            {
+                var content = File.ReadAllText(filePath, Encoding.UTF8);
+                var doc = new DocumentModel
+                {
+                    Title = Path.GetFileName(filePath),
+                    Content = content,
+                    FilePath = filePath
+                };
+                Documents.Add(doc);
+                ActiveDocument = doc;
+                ConsoleText += $"已打开: {filePath}\n";
+            }
+            catch (Exception ex)
+            {
+                ConsoleText += $"无法打开文件: {ex.Message}\n";
+            }
         }
 
         private void ExecuteOpenFolder()
         {
-            OpenFolderDialog dialog = new OpenFolderDialog();
+            var dialog = new OpenFolderDialog();
             if (dialog.ShowDialog() == true)
             {
                 if (string.IsNullOrEmpty(dialog.FolderName))
@@ -76,61 +159,99 @@ namespace Pytools.ViewModels
                     ConsoleText += "未选择路径或路径为空\n";
                     return;
                 }
-
-                CurrentRootPath = dialog.FolderName; // 触发 UI 刷新树
-                // --- 新增：同步更新路径显示栏为文件夹路径 ---
-                ActiveFilePath = dialog.FolderName;
+                CurrentRootPath = dialog.FolderName;
                 ConsoleText += $"当前项目路径: {CurrentRootPath}\n";
             }
         }
 
         private void ExecuteOpenFile()
         {
-            OpenFileDialog openFileDialog = new OpenFileDialog();
-            openFileDialog.Filter = "Python files (*.py)|*.py|All files (*.*)|*.*";
-
-            if (openFileDialog.ShowDialog() == true)
+            var dialog = new OpenFileDialog
             {
-                try
-                {
-                    string filePath = openFileDialog.FileName;
-                    string? folderPath = Path.GetDirectoryName(filePath);
+                Filter = "Python files (*.py)|*.py|All files (*.*)|*.*"
+            };
 
-                    if (!string.IsNullOrEmpty(folderPath))
-                    {
-                        CurrentRootPath = folderPath; // 触发 UI 刷新树
-                    }
+            if (dialog.ShowDialog() != true) return;
 
-                    // 读取内容并更新状态
-                    CodeContent = File.ReadAllText(filePath, Encoding.UTF8);
-                    ActiveFilePath = filePath; // 更新当前活动文件路径
-                    WindowTitle = $"My Python IDE - {Path.GetFileName(filePath)}";
-                    ConsoleText += $"已打开文件并载入目录: {Path.GetFileName(filePath)}\n";
-                }
-                catch (Exception ex)
+            string filePath = dialog.FileName;
+            string? folderPath = Path.GetDirectoryName(filePath);
+
+            if (!string.IsNullOrEmpty(folderPath))
+                CurrentRootPath = folderPath;
+
+            OpenOrActivateDocument(filePath);
+        }
+
+        private void ExecuteSave()
+        {
+            if (ActiveDocument == null) return;
+
+            var filePath = ActiveDocument.FilePath;
+
+            if (string.IsNullOrEmpty(filePath)
+                || Directory.Exists(filePath)
+                || !File.Exists(filePath))
+            {
+                var dialog = new SaveFileDialog
                 {
-                    ConsoleText += $"操作失败: {ex.Message}\n";
+                    Filter = "Python files (*.py)|*.py|All files (*.*)|*.*",
+                    DefaultExt = ".py"
+                };
+                if (dialog.ShowDialog() == true)
+                {
+                    filePath = dialog.FileName;
+                    ActiveDocument.FilePath = filePath;
+                    ActiveDocument.Title = Path.GetFileName(filePath);
                 }
+                else return;
+            }
+
+            try
+            {
+                File.WriteAllText(filePath, ActiveDocument.Content, Encoding.UTF8);
+                ConsoleText += $"文件已保存: {filePath}\n";
+            }
+            catch (Exception ex)
+            {
+                ConsoleText += $"保存失败: {ex.Message}\n";
             }
         }
-        //事件和委托
+
+        private void ExecuteNew()
+        {
+            var count = Documents.Count(d => d.Title.StartsWith("未命名"));
+            var title = count == 0 ? "未命名.py" : $"未命名{count + 1}.py";
+
+            var doc = new DocumentModel
+            {
+                Title = title,
+                Content = "",
+                FilePath = ""
+            };
+            Documents.Add(doc);
+            ActiveDocument = doc;
+            ConsoleText += $"已创建新文件: {title}\n";
+        }
+
+        private void OnActiveDocumentPropertyChanged(object? s, PropertyChangedEventArgs e)
+        {
+            switch (e.PropertyName)
+            {
+                case nameof(DocumentModel.Title):
+                    OnPropertyChanged(nameof(WindowTitle));
+                    break;
+                case nameof(DocumentModel.Content):
+                    OnPropertyChanged(nameof(CodeContent));
+                    break;
+                case nameof(DocumentModel.FilePath):
+                    OnPropertyChanged(nameof(ActiveFilePath));
+                    break;
+            }
+        }
+
         public event PropertyChangedEventHandler? PropertyChanged;
 
-        //PropertyChangedEventHandler是委托类型，表示属性更改事件的处理方法。
-        //当属性值发生变化时，调用OnPropertyChanged方法触发事件，通知UI更新绑定到该属性的元素。
-
-        // CallerMemberName特性允许在调用OnPropertyChanged方法时自动获取调用者的成员名称（属性名称），从而简化代码并减少错误。
-
-        //OnPropertyChanged方法接受一个可选的字符串参数name，表示发生变化的属性名称。
-        //如果调用时未提供该参数，编译器会自动将调用者的成员名称传递给它。
         protected void OnPropertyChanged([CallerMemberName] string? name = null) =>
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-
-        /*总结!!!*/
-        // PropertyChanged 是一个事件，类型为 PropertyChangedEventHandler。
-        // 当属性值发生变化时，调用 OnPropertyChanged 方法触发该事件，通知 UI 更新绑定到该属性的元素。
-        //
-
-
     }
 }
