@@ -10,6 +10,7 @@
         xmlns:local="clr-namespace:Pytools.Views"
         xmlns:avalonedit="http://icsharpcode.net/sharpdevelop/avalonedit"
         xmlns:viewmodels="clr-namespace:Pytools.ViewModels"
+        xmlns:converters="clr-namespace:Pytools.Converters"
         d:DataContext="{d:DesignInstance Type=viewmodels:MainViewModel}"
         mc:Ignorable="d"
         Title="{Binding WindowTitle}" Height="720" Width="1200"
@@ -34,7 +35,7 @@
                         Padding="5,2" 
                         Margin="2"/>
                 <Button Content="💾 保存" Command="{Binding SaveCommand}" Padding="5,2" Margin="2"/>
-                <Button Content="▶ 运行" Padding="5,2" Margin="2"/>
+                <Button Content="▶ 运行" Command="{Binding RunCommand}" Padding="5,2" Margin="2"/>
             </ToolBar>
             <!-- 2. 新增：当前文件路径显示区 (贯穿全行) -->
             <Border Background="White" BorderBrush="#DCDCDC" BorderThickness="0,1,0,1" Padding="8,3">
@@ -98,21 +99,96 @@
 
                         <xcad:LayoutAnchorablePane>
                             <xcad:LayoutAnchorable Title="Variable Explorer" CanHide="False" CanAutoHide="False">
-                                <DataGrid Name="VariableGrid" AutoGenerateColumns="True"
-                                      Background="White" BorderThickness="0"/>
+                                <DataGrid Name="VariableGrid"
+                                          AutoGenerateColumns="False"
+                                          ItemsSource="{Binding VariableList}"
+                                          Background="White"
+                                          BorderThickness="0"
+                                          GridLinesVisibility="None"
+                                          HeadersVisibility="Column"
+                                          CanUserAddRows="False"
+                                          CanUserDeleteRows="False"
+                                          CanUserResizeRows="False"
+                                          SelectionMode="Single"
+                                          RowHeaderWidth="0">
+                                    <DataGrid.Resources>
+                                        <converters:ColorToBrushConverter x:Key="ColorToBrush"/>
+                                        <Style TargetType="DataGridColumnHeader">
+                                            <Setter Property="Background" Value="#FAFAFA"/>
+                                            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                                            <Setter Property="BorderBrush" Value="#E0E0E0"/>
+                                            <Setter Property="Padding" Value="10,4"/>
+                                            <Setter Property="FontWeight" Value="SemiBold"/>
+                                            <Setter Property="FontSize" Value="11"/>
+                                        </Style>
+                                        <Style TargetType="DataGridCell">
+                                            <Setter Property="BorderThickness" Value="0"/>
+                                            <Setter Property="Padding" Value="10,2"/>
+                                            <Setter Property="FontSize" Value="11"/>
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="DataGridCell">
+                                                        <Border Background="{Binding TypeColor, Converter={StaticResource ColorToBrush}}"
+                                                                Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </DataGrid.Resources>
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
+                                        <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="80"/>
+                                        <DataGridTextColumn Header="Size" Binding="{Binding Size}" Width="60"/>
+                                        <DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="2*"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
                             </xcad:LayoutAnchorable>
                             <xcad:LayoutAnchorable Title="Debugger" CanHide="False" CanAutoHide="False"/>
+                            <xcad:LayoutAnchorable Title="Plot Viewer" CanHide="False" CanAutoHide="False">
+                                <Border Background="#F5F5F5" BorderBrush="#DCDCDC" BorderThickness="1">
+                                    <TextBlock Text="Wait for Signal Data..."
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Foreground="#999999"
+                                           FontSize="14"/>
+                                </Border>
+                            </xcad:LayoutAnchorable>
                         </xcad:LayoutAnchorablePane>
 
                         <xcad:LayoutAnchorablePane>
-                            <xcad:LayoutAnchorable Title="IPython Console" CanHide="False" CanAutoHide="False">
+                            <xcad:LayoutAnchorable x:Name="ConsoleAnchorable"
+                                                   Title="IPython Console"
+                                                   CanHide="False"
+                                                   CanAutoHide="False">
                                 <Border Background="#1E1E1E">
-                                    <ScrollViewer>
-                                        <TextBlock Name="ConsoleOutput"
-                                               Foreground="#DCDCDC" FontFamily="Consolas"
-                                               FontSize="12" Padding="10" TextWrapping="Wrap"
-                                               Text="{Binding ConsoleText}" />
-                                    </ScrollViewer>
+                                    <ListBox Name="ConsoleListBox"
+                                             ItemsSource="{Binding ConsoleLines}"
+                                             Background="Transparent"
+                                             BorderThickness="0"
+                                             Foreground="#DCDCDC"
+                                             FontFamily="Consolas"
+                                             FontSize="12">
+                                        <ListBox.ItemContainerStyle>
+                                            <Style TargetType="ListBoxItem">
+                                                <Setter Property="Foreground" Value="#DCDCDC"/>
+                                                <Setter Property="Padding" Value="10,1"/>
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="ListBoxItem">
+                                                            <ContentPresenter/>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </ListBox.ItemContainerStyle>
+                                        <ListBox.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <VirtualizingStackPanel/>
+                                            </ItemsPanelTemplate>
+                                        </ListBox.ItemsPanel>
+                                    </ListBox>
                                 </Border>
                             </xcad:LayoutAnchorable>
                             <xcad:LayoutAnchorable Title="History" />

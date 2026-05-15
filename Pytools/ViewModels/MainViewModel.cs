@@ -13,12 +13,17 @@ namespace Pytools.ViewModels
 {
     public class MainViewModel : INotifyPropertyChanged
     {
-        private string _consoleText = "Python 3.12.1 | Console Ready\n";
         private string? _currentRootPath;
         private DocumentModel? _activeDocument;
         private readonly FileWatcherService _fileWatcher;
+        private readonly PythonExecutionService _pythonService;
+        private int _executionCount = 1;
 
         public event Action? TreeRefreshRequested;
+        public event Action? ConsoleActivateRequested;
+
+        public ObservableCollection<string> ConsoleLines { get; } = new();
+        public ObservableCollection<VariableEntry> VariableList { get; } = new();
 
         public ObservableCollection<DocumentModel> Documents { get; } = new();
 
@@ -71,12 +76,6 @@ namespace Pytools.ViewModels
             }
         }
 
-        public string ConsoleText
-        {
-            get => _consoleText;
-            set { _consoleText = value; OnPropertyChanged(); }
-        }
-
         public string? CurrentRootPath
         {
             get => _currentRootPath;
@@ -97,6 +96,7 @@ namespace Pytools.ViewModels
         public ICommand OpenFileCommand { get; }
         public ICommand SaveCommand { get; }
         public ICommand NewCommand { get; }
+        public ICommand RunCommand { get; }
 
         public MainViewModel()
         {
@@ -104,9 +104,24 @@ namespace Pytools.ViewModels
             OpenFileCommand = new RelayCommand(_ => ExecuteOpenFile());
             SaveCommand = new RelayCommand(_ => ExecuteSave());
             NewCommand = new RelayCommand(_ => ExecuteNew());
+            RunCommand = new RelayCommand(_ => ExecuteRun());
 
             _fileWatcher = new FileWatcherService("*.py", 200);
             _fileWatcher.FilesChanged += () => TreeRefreshRequested?.Invoke();
+
+            _pythonService = new PythonExecutionService();
+            _pythonService.LineReceived += line =>
+                System.Windows.Application.Current.Dispatcher.Invoke(() => ConsoleLines.Add(line));
+            _pythonService.ExecutionFinished += () =>
+                System.Windows.Application.Current.Dispatcher.Invoke(() => _executionCount++);
+            _pythonService.VariablesReceived += vars =>
+                System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                {
+                    foreach (var v in vars)
+                        VariableList.Add(v);
+                });
+
+            ConsoleLines.Add("Python 3.12.1 | Console Ready");
         }
 
         public void CreateStartupPage()
@@ -141,11 +156,10 @@ namespace Pytools.ViewModels
                 };
                 Documents.Add(doc);
                 ActiveDocument = doc;
-                ConsoleText += $"已打开: {filePath}\n";
             }
             catch (Exception ex)
             {
-                ConsoleText += $"无法打开文件: {ex.Message}\n";
+                ConsoleLines.Add($"无法打开文件: {ex.Message}");
             }
         }
 
@@ -155,12 +169,8 @@ namespace Pytools.ViewModels
             if (dialog.ShowDialog() == true)
             {
                 if (string.IsNullOrEmpty(dialog.FolderName))
-                {
-                    ConsoleText += "未选择路径或路径为空\n";
                     return;
-                }
                 CurrentRootPath = dialog.FolderName;
-                ConsoleText += $"当前项目路径: {CurrentRootPath}\n";
             }
         }
 
@@ -209,11 +219,11 @@ namespace Pytools.ViewModels
             try
             {
                 File.WriteAllText(filePath, ActiveDocument.Content, Encoding.UTF8);
-                ConsoleText += $"文件已保存: {filePath}\n";
+                ConsoleLines.Add($"文件已保存: {filePath}");
             }
             catch (Exception ex)
             {
-                ConsoleText += $"保存失败: {ex.Message}\n";
+                ConsoleLines.Add($"保存失败: {ex.Message}");
             }
         }
 
@@ -230,7 +240,43 @@ namespace Pytools.ViewModels
             };
             Documents.Add(doc);
             ActiveDocument = doc;
-            ConsoleText += $"已创建新文件: {title}\n";
+            ConsoleLines.Add($"已创建新文件: {title}");
+        }
+
+        private void ExecuteRun()
+        {
+            if (ActiveDocument == null) return;
+
+            if (string.IsNullOrEmpty(ActiveDocument.FilePath)
+                || Directory.Exists(ActiveDocument.FilePath)
+                || !File.Exists(ActiveDocument.FilePath))
+            {
+                ExecuteSave();
+                if (string.IsNullOrEmpty(ActiveDocument.FilePath)
+                    || !File.Exists(ActiveDocument.FilePath))
+                {
+                    ConsoleLines.Add("运行中止：请先保存文件");
+                    return;
+                }
+            }
+
+            try
+            {
+                File.WriteAllText(ActiveDocument.FilePath, ActiveDocument.Content, Encoding.UTF8);
+            }
+            catch (Exception ex)
+            {
+                ConsoleLines.Add($"保存失败: {ex.Message}");
+                return;
+            }
+
+            ConsoleLines.Add("");
+            ConsoleLines.Add($"In [{_executionCount}]: %runfile {ActiveDocument.FilePath}");
+
+            VariableList.Clear();
+
+            ConsoleActivateRequested?.Invoke();
+            _pythonService.Execute(ActiveDocument.FilePath);
         }
 
         private void OnActiveDocumentPropertyChanged(object? s, PropertyChangedEventArgs e)

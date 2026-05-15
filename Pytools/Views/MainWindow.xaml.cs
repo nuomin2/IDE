@@ -31,6 +31,20 @@ namespace Pytools.Views
                     LoadDirectory(_viewModel.CurrentRootPath);
             };
 
+            _viewModel.ConsoleLines.CollectionChanged += (s, e) =>
+            {
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (ConsoleListBox.Items.Count > 0)
+                        ConsoleListBox.ScrollIntoView(ConsoleListBox.Items[^1]);
+                }));
+            };
+
+            _viewModel.ConsoleActivateRequested += () =>
+            {
+                ConsoleAnchorable.IsActive = true;
+            };
+
             _viewModel.CreateStartupPage();
         }
 
@@ -115,13 +129,6 @@ namespace Pytools.Views
             {
                 LoadDirectory(_viewModel.CurrentRootPath);
             }
-            else if (e.PropertyName == nameof(MainViewModel.ConsoleText))
-            {
-                Dispatcher.BeginInvoke(new Action(() => {
-                    var scrollViewer = ConsoleOutput.Parent as ScrollViewer;
-                    scrollViewer?.ScrollToEnd();
-                }));
-            }
             else if (e.PropertyName == "ActiveDocument")
             {
                 if (_isSyncingActive) return;
@@ -149,7 +156,7 @@ namespace Pytools.Views
             }
             catch (Exception ex)
             {
-                _viewModel.ConsoleText += $"加载目录树出错: {ex.Message}\n";
+                _viewModel.ConsoleLines.Add($"加载目录树出错: {ex.Message}");
             }
         }
 
