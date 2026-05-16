@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Pytools.Models;
 
 namespace Pytools.Services
@@ -19,7 +20,7 @@ namespace Pytools.Services
 
         public bool IsRunning { get; private set; }
 
-        public void Execute(string scriptPath)
+        public async Task ExecuteAsync(string scriptPath)
         {
             if (IsRunning) return;
 
@@ -53,11 +54,7 @@ namespace Pytools.Services
                 WorkingDirectory = directory
             };
 
-            _process = new Process
-            {
-                StartInfo = psi,
-                EnableRaisingEvents = true
-            };
+            _process = new Process { StartInfo = psi };
 
             _process.OutputDataReceived += OnOutputLine;
             _process.ErrorDataReceived += (_, e) =>
@@ -66,21 +63,20 @@ namespace Pytools.Services
                     LineReceived?.Invoke(e.Data);
             };
 
-            _process.Exited += (_, _) =>
-            {
-                IsRunning = false;
-                try { File.Delete(wrapperPath); } catch { }
-                _process.Dispose();
-                _process = null;
-                ExecutionFinished?.Invoke();
-            };
-
             try
             {
                 IsRunning = true;
                 _process.Start();
                 _process.BeginOutputReadLine();
                 _process.BeginErrorReadLine();
+
+                await _process.WaitForExitAsync();
+
+                IsRunning = false;
+                try { File.Delete(wrapperPath); } catch { }
+                _process.Dispose();
+                _process = null;
+                ExecutionFinished?.Invoke();
             }
             catch (Exception ex)
             {
@@ -189,6 +185,8 @@ try:
         '\n' if 'coding:' in line or 'coding=' in line else line
         for line in _lines
     )
+    _ide_boot_snapshots = set(list(globals().keys()))
+    _ide_boot_snapshots.add('_ide_boot_snapshots')
     exec(compile(_cleaned, _user_script, 'exec'), globals())
 except Exception:
     traceback.print_exc()
@@ -198,6 +196,8 @@ for _name, _val in list(globals().items()):
     if _name.startswith('__') and _name.endswith('__'):
         continue
     if _name in ('sys', 'os', 'json', 'types', 'traceback', '_f', '_user_script', '_result', '_name', '_val'):
+        continue
+    if _name in _ide_boot_snapshots:
         continue
     _t = type(_val)
     if _t in (types.ModuleType, types.FunctionType, types.BuiltinFunctionType):

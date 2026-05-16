@@ -276,7 +276,7 @@ namespace Pytools.ViewModels
             VariableList.Clear();
 
             ConsoleActivateRequested?.Invoke();
-            _pythonService.Execute(ActiveDocument.FilePath);
+            _ = _pythonService.ExecuteAsync(ActiveDocument.FilePath);
         }
 
         private void OnActiveDocumentPropertyChanged(object? s, PropertyChangedEventArgs e)

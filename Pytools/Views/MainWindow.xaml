@@ -11,6 +11,7 @@
         xmlns:avalonedit="http://icsharpcode.net/sharpdevelop/avalonedit"
         xmlns:viewmodels="clr-namespace:Pytools.ViewModels"
         xmlns:converters="clr-namespace:Pytools.Converters"
+        xmlns:materialDesign="clr-namespace:MaterialDesignThemes.Wpf;assembly=MaterialDesignThemes.Wpf"
         d:DataContext="{d:DesignInstance Type=viewmodels:MainViewModel}"
         mc:Ignorable="d"
         Title="{Binding WindowTitle}" Height="720" Width="1200"
@@ -99,51 +100,90 @@
 
                         <xcad:LayoutAnchorablePane>
                             <xcad:LayoutAnchorable Title="Variable Explorer" CanHide="False" CanAutoHide="False">
-                                <DataGrid Name="VariableGrid"
-                                          AutoGenerateColumns="False"
-                                          ItemsSource="{Binding VariableList}"
-                                          Background="White"
-                                          BorderThickness="0"
-                                          GridLinesVisibility="None"
-                                          HeadersVisibility="Column"
-                                          CanUserAddRows="False"
-                                          CanUserDeleteRows="False"
-                                          CanUserResizeRows="False"
-                                          SelectionMode="Single"
-                                          RowHeaderWidth="0">
-                                    <DataGrid.Resources>
-                                        <converters:ColorToBrushConverter x:Key="ColorToBrush"/>
-                                        <Style TargetType="DataGridColumnHeader">
-                                            <Setter Property="Background" Value="#FAFAFA"/>
-                                            <Setter Property="BorderThickness" Value="0,0,0,1"/>
-                                            <Setter Property="BorderBrush" Value="#E0E0E0"/>
-                                            <Setter Property="Padding" Value="10,4"/>
-                                            <Setter Property="FontWeight" Value="SemiBold"/>
-                                            <Setter Property="FontSize" Value="11"/>
-                                        </Style>
-                                        <Style TargetType="DataGridCell">
-                                            <Setter Property="BorderThickness" Value="0"/>
-                                            <Setter Property="Padding" Value="10,2"/>
-                                            <Setter Property="FontSize" Value="11"/>
-                                            <Setter Property="Template">
-                                                <Setter.Value>
-                                                    <ControlTemplate TargetType="DataGridCell">
-                                                        <Border Background="{Binding TypeColor, Converter={StaticResource ColorToBrush}}"
-                                                                Padding="{TemplateBinding Padding}">
-                                                            <ContentPresenter/>
-                                                        </Border>
-                                                    </ControlTemplate>
-                                                </Setter.Value>
-                                            </Setter>
-                                        </Style>
-                                    </DataGrid.Resources>
-                                    <DataGrid.Columns>
-                                        <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
-                                        <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="80"/>
-                                        <DataGridTextColumn Header="Size" Binding="{Binding Size}" Width="60"/>
-                                        <DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="2*"/>
-                                    </DataGrid.Columns>
-                                </DataGrid>
+                                <Grid>
+                                    <DataGrid Name="VariableGrid"
+                                              AutoGenerateColumns="False"
+                                              ItemsSource="{Binding VariableList}"
+                                              Background="White"
+                                              BorderThickness="0"
+                                              GridLinesVisibility="None"
+                                              HeadersVisibility="Column"
+                                              CanUserAddRows="False"
+                                              CanUserDeleteRows="False"
+                                              CanUserResizeRows="False"
+                                              SelectionMode="Single"
+                                              RowHeaderWidth="0">
+                                        <DataGrid.Style>
+                                            <Style TargetType="DataGrid">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding VariableList.Count}" Value="0">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </DataGrid.Style>
+                                        <DataGrid.Resources>
+                                            <converters:ColorToBrushConverter x:Key="ColorToBrush"/>
+                                            <Style TargetType="DataGridColumnHeader">
+                                                <Setter Property="Background" Value="#FAFAFA"/>
+                                                <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                                                <Setter Property="BorderBrush" Value="#E0E0E0"/>
+                                                <Setter Property="Padding" Value="10,4"/>
+                                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                                <Setter Property="FontSize" Value="11"/>
+                                            </Style>
+                                            <Style TargetType="DataGridCell">
+                                                <Setter Property="BorderThickness" Value="0"/>
+                                                <Setter Property="Padding" Value="10,2"/>
+                                                <Setter Property="FontSize" Value="11"/>
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="DataGridCell">
+                                                            <Border Background="{Binding TypeColor, Converter={StaticResource ColorToBrush}}"
+                                                                    Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter/>
+                                                            </Border>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </DataGrid.Resources>
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
+                                            <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="80"/>
+                                            <DataGridTextColumn Header="Size" Binding="{Binding Size}" Width="60"/>
+                                            <DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="2*"/>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                        <StackPanel.Style>
+                                            <Style TargetType="StackPanel">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding VariableList.Count}" Value="0">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </StackPanel.Style>
+                                        <materialDesign:PackIcon Kind="Telescope"
+                                                                Foreground="#AAAAAA"
+                                                                Width="32" Height="32"
+                                                                Margin="0,0,0,12"/>
+                                        <TextBlock Text="No variables to show"
+                                                   FontSize="16"
+                                                   Foreground="#888888"
+                                                   HorizontalAlignment="Center"
+                                                   Margin="0,0,0,6"/>
+                                        <TextBlock Text="Run code in the Editor to see global variables listed here."
+                                                   FontSize="12"
+                                                   Foreground="#AAAAAA"
+                                                   HorizontalAlignment="Center"
+                                                   TextWrapping="Wrap"
+                                                   TextAlignment="Center"/>
+                                    </StackPanel>
+                                </Grid>
                             </xcad:LayoutAnchorable>
                             <xcad:LayoutAnchorable Title="Debugger" CanHide="False" CanAutoHide="False"/>
                             <xcad:LayoutAnchorable Title="Plot Viewer" CanHide="False" CanAutoHide="False">
