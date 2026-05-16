@@ -17,6 +17,7 @@ namespace Pytools.Services
         public event Action<string>? LineReceived;
         public event Action? ExecutionFinished;
         public event Action<List<VariableEntry>>? VariablesReceived;
+        public event Action<byte[]>? PlotReceived;
 
         public bool IsRunning { get; private set; }
 
@@ -91,11 +92,30 @@ namespace Pytools.Services
         {
             if (e.Data == null) return;
 
-            const string marker = "##VAR_DATA_START##";
-            int idx = e.Data.IndexOf(marker, StringComparison.Ordinal);
-            if (idx >= 0)
+            const string plotMarker = "##PLOT_DATA_START##";
+            int plotIdx = e.Data.IndexOf(plotMarker, StringComparison.Ordinal);
+            if (plotIdx >= 0)
             {
-                string json = e.Data[(idx + marker.Length)..];
+                string b64 = e.Data[(plotIdx + plotMarker.Length)..];
+                int plotEndIdx = b64.IndexOf("##PLOT_DATA_END##", StringComparison.Ordinal);
+                if (plotEndIdx >= 0)
+                {
+                    b64 = b64[..plotEndIdx];
+                    try
+                    {
+                        byte[] data = Convert.FromBase64String(b64);
+                        PlotReceived?.Invoke(data);
+                    }
+                    catch { }
+                }
+                return;
+            }
+
+            const string varMarker = "##VAR_DATA_START##";
+            int varIdx = e.Data.IndexOf(varMarker, StringComparison.Ordinal);
+            if (varIdx >= 0)
+            {
+                string json = e.Data[(varIdx + varMarker.Length)..];
                 int endIdx = json.IndexOf("##VAR_DATA_END##", StringComparison.Ordinal);
                 if (endIdx >= 0)
                 {
@@ -143,6 +163,7 @@ namespace Pytools.Services
             LineReceived = null;
             ExecutionFinished = null;
             VariablesReceived = null;
+            PlotReceived = null;
         }
 
         private static string? FindPython()
@@ -187,6 +208,27 @@ try:
     )
     _ide_boot_snapshots = set(list(globals().keys()))
     _ide_boot_snapshots.add('_ide_boot_snapshots')
+
+    try:
+        import base64 as _base64, io as _io
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as _plt
+
+        def _pytools_show(*_args, **_kwargs):
+            for _fignum in _plt.get_fignums():
+                _fig = _plt.figure(_fignum)
+                _buf = _io.BytesIO()
+                _fig.savefig(_buf, format='png', dpi=100, bbox_inches='tight')
+                _buf.seek(0)
+                _b64 = _base64.b64encode(_buf.read()).decode('ascii')
+                print('##PLOT_DATA_START##' + _b64 + '##PLOT_DATA_END##')
+                _buf.close()
+                _plt.close(_fig)
+        _plt.show = _pytools_show
+    except Exception:
+        pass
+
     exec(compile(_cleaned, _user_script, 'exec'), globals())
 except Exception:
     traceback.print_exc()

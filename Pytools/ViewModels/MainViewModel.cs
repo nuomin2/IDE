@@ -24,6 +24,14 @@ namespace Pytools.ViewModels
 
         public ObservableCollection<string> ConsoleLines { get; } = new();
         public ObservableCollection<VariableEntry> VariableList { get; } = new();
+        public ObservableCollection<PlotModel> PlotList { get; } = new();
+
+        private PlotModel? _selectedPlot;
+        public PlotModel? SelectedPlot
+        {
+            get => _selectedPlot;
+            set { _selectedPlot = value; OnPropertyChanged(); }
+        }
 
         public ObservableCollection<DocumentModel> Documents { get; } = new();
 
@@ -97,6 +105,8 @@ namespace Pytools.ViewModels
         public ICommand SaveCommand { get; }
         public ICommand NewCommand { get; }
         public ICommand RunCommand { get; }
+        public ICommand SavePlotCommand { get; }
+        public ICommand SaveAllPlotsCommand { get; }
 
         public MainViewModel()
         {
@@ -105,6 +115,8 @@ namespace Pytools.ViewModels
             SaveCommand = new RelayCommand(_ => ExecuteSave());
             NewCommand = new RelayCommand(_ => ExecuteNew());
             RunCommand = new RelayCommand(_ => ExecuteRun());
+            SavePlotCommand = new RelayCommand(_ => ExecuteSavePlot());
+            SaveAllPlotsCommand = new RelayCommand(_ => ExecuteSaveAllPlots());
 
             _fileWatcher = new FileWatcherService("*.py", 200);
             _fileWatcher.FilesChanged += () => TreeRefreshRequested?.Invoke();
@@ -119,6 +131,25 @@ namespace Pytools.ViewModels
                 {
                     foreach (var v in vars)
                         VariableList.Add(v);
+                });
+
+            _pythonService.PlotReceived += data =>
+                System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                {
+                    var bmp = new System.Windows.Media.Imaging.BitmapImage();
+                    bmp.BeginInit();
+                    bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                    bmp.StreamSource = new System.IO.MemoryStream(data);
+                    bmp.EndInit();
+                    bmp.Freeze();
+                    var plot = new PlotModel
+                    {
+                        Title = $"Plot {PlotList.Count + 1}",
+                        ImageSource = bmp,
+                        RawImageData = data
+                    };
+                    PlotList.Add(plot);
+                    SelectedPlot = plot;
                 });
 
             ConsoleLines.Add("Python 3.12.1 | Console Ready");
@@ -274,9 +305,56 @@ namespace Pytools.ViewModels
             ConsoleLines.Add($"In [{_executionCount}]: %runfile {ActiveDocument.FilePath}");
 
             VariableList.Clear();
+            PlotList.Clear();
+            SelectedPlot = null;
 
             ConsoleActivateRequested?.Invoke();
             _ = _pythonService.ExecuteAsync(ActiveDocument.FilePath);
+        }
+
+        private void ExecuteSavePlot()
+        {
+            if (SelectedPlot == null) return;
+
+            var dialog = new SaveFileDialog
+            {
+                Filter = "PNG Image|*.png",
+                DefaultExt = ".png",
+                FileName = SelectedPlot.Title + ".png"
+            };
+            if (dialog.ShowDialog() == true)
+            {
+                try
+                {
+                    File.WriteAllBytes(dialog.FileName, SelectedPlot.RawImageData);
+                }
+                catch (Exception ex)
+                {
+                    ConsoleLines.Add($"Save plot failed: {ex.Message}");
+                }
+            }
+        }
+
+        private void ExecuteSaveAllPlots()
+        {
+            if (PlotList.Count == 0) return;
+
+            var dialog = new OpenFolderDialog();
+            if (dialog.ShowDialog() == true)
+            {
+                try
+                {
+                    for (int i = 0; i < PlotList.Count; i++)
+                    {
+                        string path = Path.Combine(dialog.FolderName, $"Plot_{i + 1}.png");
+                        File.WriteAllBytes(path, PlotList[i].RawImageData);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ConsoleLines.Add($"Save all plots failed: {ex.Message}");
+                }
+            }
         }
 
         private void OnActiveDocumentPropertyChanged(object? s, PropertyChangedEventArgs e)

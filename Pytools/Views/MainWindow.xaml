@@ -187,14 +187,91 @@
                             </xcad:LayoutAnchorable>
                             <xcad:LayoutAnchorable Title="Debugger" CanHide="False" CanAutoHide="False"/>
                             <xcad:LayoutAnchorable Title="Plot Viewer" CanHide="False" CanAutoHide="False">
-                                <Border Background="#F5F5F5" BorderBrush="#DCDCDC" BorderThickness="1">
-                                    <TextBlock Text="Wait for Signal Data..."
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center"
-                                           Foreground="#999999"
-                                           FontSize="14"/>
-                                </Border>
-                            </xcad:LayoutAnchorable>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="#FAFAFA"
+                BorderBrush="#E0E0E0" BorderThickness="0,0,0,1" Padding="4,2">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Visible"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding PlotList.Count}" Value="0">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <StackPanel Orientation="Horizontal">
+                <Button Command="{Binding SavePlotCommand}" Padding="4" Margin="4,0,4,0"
+                        ToolTip="Save plot as..." Background="Transparent" BorderThickness="0">
+                    <materialDesign:PackIcon Kind="ContentSave" Width="14" Height="14" Foreground="#555555"/>
+                </Button>
+                <Button Command="{Binding SaveAllPlotsCommand}" Padding="4" Margin="0,0,0,0"
+                        ToolTip="Save all plots as..." Background="Transparent" BorderThickness="0">
+                    <materialDesign:PackIcon Kind="ContentSaveAll" Width="14" Height="14" Foreground="#555555"/>
+                </Button>
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="85"/>
+            </Grid.ColumnDefinitions>
+
+            <Image Grid.Column="0" Source="{Binding SelectedPlot.ImageSource}" Stretch="Uniform" Margin="4"/>
+
+            <ListBox Grid.Column="1" ItemsSource="{Binding PlotList}" SelectedItem="{Binding SelectedPlot, Mode=TwoWay}"
+                     Background="#F5F5F5" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     HorizontalContentAlignment="Stretch">
+                <ListBox.Resources>
+                    <Style TargetType="ScrollBar">
+                        <Setter Property="Width" Value="10"/>
+                        <Setter Property="MinWidth" Value="10"/>
+                    </Style>
+                </ListBox.Resources>
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                        <Setter Property="Padding" Value="4,4,8,4"/>
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Image Source="{Binding ImageSource}" Stretch="Uniform"/>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Grid>
+
+        <Border Grid.Row="1" Background="#F5F5F5">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding PlotList.Count}" Value="0">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                <materialDesign:PackIcon Kind="ImageArea"
+                                         Foreground="#AAAAAA"
+                                         Width="32" Height="32"
+                                         Margin="0,0,0,12"/>
+                <TextBlock Text="No plots to show"
+                           FontSize="14"
+                           Foreground="#888888"
+                           HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</xcad:LayoutAnchorable>
                         </xcad:LayoutAnchorablePane>
 
                         <xcad:LayoutAnchorablePane>
