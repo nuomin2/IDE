@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Pytools.Models;
+using Pytools.Models.Simulation;
 
 namespace Pytools.Services
 {
@@ -50,6 +51,7 @@ namespace Pytools.Services
                 Arguments = $"\"{wrapperPath}\"",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                RedirectStandardInput = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 WorkingDirectory = directory
@@ -91,6 +93,62 @@ namespace Pytools.Services
         private void OnOutputLine(object? sender, DataReceivedEventArgs e)
         {
             if (e.Data == null) return;
+
+            const string simMarker = "##SIM_START##";
+            int simIdx = e.Data.IndexOf(simMarker, StringComparison.Ordinal);
+            if (simIdx >= 0)
+            {
+                string json = e.Data[(simIdx + simMarker.Length)..];
+                int simEndIdx = json.IndexOf("##SIM_END##", StringComparison.Ordinal);
+                if (simEndIdx >= 0)
+                {
+                    json = json[..simEndIdx].Trim();
+                    string responseJson;
+                    try
+                    {
+                        var request = JsonSerializer.Deserialize<SimulationRequest>(json);
+                        if (request == null)
+                        {
+                            responseJson = "{\"status\":\"error\",\"message\":\"JSON 解析失败：请求为空。\"}";
+                            WriteStdin(responseJson);
+                        }
+                        else
+                        {
+                            string? error = TopologyValidator.Validate(request);
+                            if (error != null)
+                            {
+                                responseJson = JsonSerializer.Serialize(new { status = "error", message = error });
+                                WriteStdin(responseJson);
+                            }
+                            else
+                            {
+                                // 校验通过 → 后台运行仿真引擎
+                                _ = Task.Run(() =>
+                                {
+                                    try
+                                    {
+                                        var engine = new SimulatorEngine(request);
+                                        var result = engine.Run();
+                                        string resultJson = JsonSerializer.Serialize(result);
+                                        WriteStdin(resultJson);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        WriteStdin(JsonSerializer.Serialize(
+                                            new { status = "error", message = $"仿真引擎异常：{ex.Message}" }));
+                                    }
+                                });
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        responseJson = JsonSerializer.Serialize(new { status = "error", message = $"JSON 解析异常：{ex.Message}" });
+                        WriteStdin(responseJson);
+                    }
+                }
+                return;
+            }
 
             const string plotMarker = "##PLOT_DATA_START##";
             int plotIdx = e.Data.IndexOf(plotMarker, StringComparison.Ordinal);
@@ -144,6 +202,16 @@ namespace Pytools.Services
             LineReceived?.Invoke(e.Data);
         }
 
+        private void WriteStdin(string json)
+        {
+            try
+            {
+                _process?.StandardInput.WriteLine(json);
+                _process?.StandardInput.Flush();
+            }
+            catch { }
+        }
+
         public void Stop()
         {
             if (_process != null && !_process.HasExited)
@@ -192,9 +260,16 @@ namespace Pytools.Services
             {
                 string escapedPath = scriptPath.Replace("\\", "\\\\");
                 string escapedDir = workingDir.Replace("\\", "\\\\");
+                string sdkDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SDK");
+                string escapedSdkDir = sdkDir.Replace("\\", "\\\\");
 
                 string wrapper = $@"# -*- coding: utf-8 -*-
 import sys, os, json, types, traceback
+
+_sdk_path = r'{escapedSdkDir}'
+if _sdk_path not in sys.path:
+    sys.path.insert(0, _sdk_path)
+
 os.chdir(r'{escapedDir}')
 _user_script = r'{escapedPath}'
 
