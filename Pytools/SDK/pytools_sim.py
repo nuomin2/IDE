@@ -31,11 +31,16 @@ class Router(Node):
 class Link:
     """A directed or undirected connection between two nodes."""
 
-    def __init__(self, src: str, dst: str, bw: int, delay: float) -> None:
+    def __init__(self, src: str, dst: str, bw: int, delay: float,
+                 drop_rate: float = 0.0, max_queue_depth: int = 100,
+                 max_timeout_ms: float = 50.0) -> None:
         self.src = src
         self.dst = dst
         self.bw = bw          # Mbps
         self.delay = delay    # ms
+        self.drop_rate = drop_rate
+        self.max_queue_depth = max_queue_depth
+        self.max_timeout_ms = max_timeout_ms
 
 
 class Traffic:
@@ -102,7 +107,9 @@ class Simulator:
                 {"id": n.id, "type": n.__class__.__name__} for n in self.nodes
             ],
             "links": [
-                {"src": l.src, "dst": l.dst, "bw": l.bw, "delay": l.delay}
+                {"src": l.src, "dst": l.dst, "bw": l.bw, "delay": l.delay,
+                 "drop_rate": l.drop_rate, "max_queue_depth": l.max_queue_depth,
+                 "max_timeout_ms": l.max_timeout_ms}
                 for l in self.links
             ],
             "traffic": [
@@ -128,15 +135,6 @@ class Simulator:
             result = {}
 
         _print_report(result, simulation_time, summary_only)
-
-        # === Debug 探针开始 ===
-        print("\n>>> [Debug] 正在排查 CDF 绘图静默失败...")
-        print(f">>> [Debug] C# 返回的字典 keys: {list(result.keys())}")
-        if "cdf_data" in result:
-            print(f">>> [Debug] 发现 cdf_data！内容片段: {str(result['cdf_data'])[:100]}")
-        else:
-            print(">>> [Debug] 警告：C# 返回的结果中完全不存在 'cdf_data' 字段！")
-        # === Debug 探针结束 ===
 
         if "cdf_data" in result and result["cdf_data"]:
             cdf = result["cdf_data"]

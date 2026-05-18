@@ -20,6 +20,8 @@ namespace Pytools.Services
         private readonly Dictionary<string, List<double>> _flowDelays = new();
         private readonly Dictionary<string, int> _flowPeakQueues = new();
         private readonly Dictionary<string, double> _linkBusyUntil = new();
+        private readonly Dictionary<string, int> _flowSent = new();
+        private readonly Dictionary<string, int> _flowDropped = new();
 
         public SimulatorEngine(SimulationRequest request)
         {
@@ -72,6 +74,36 @@ namespace Pytools.Services
                     if (!_linkBusyUntil.ContainsKey(linkKey))
                         _linkBusyUntil[linkKey] = 0.0;
                     double queueDelay = Math.Max(0.0, _linkBusyUntil[linkKey] - _currentTime);
+
+                    // 统计发包
+                    _flowSent[flowKey] = _flowSent.GetValueOrDefault(flowKey, 0) + 1;
+
+                    // 三层丢包屏障
+                    double dropRate = link?.DropRate ?? 0.0;
+                    int maxQ = link?.MaxQueueDepth ?? 100;
+                    double maxTime = link?.MaxTimeoutMs ?? 50.0;
+
+                    bool isDropped = _rng.NextDouble() < dropRate;
+                    if (!isDropped)
+                    {
+                        int qDepth = (int)(queueDelay * 10);
+                        if (qDepth > maxQ)
+                            isDropped = true;
+                    }
+                    if (!isDropped && queueDelay > maxTime)
+                        isDropped = true;
+
+                    if (isDropped)
+                    {
+                        _flowDropped[flowKey] = _flowDropped.GetValueOrDefault(flowKey, 0) + 1;
+
+                        // 即使当前包被丢弃，也必须调度该流的下一个包，否则会导致永久断流
+                        var t = _request.Traffic.First(x =>
+                            x.Src == evt.SrcId && x.Dst == evt.DstId);
+                        ScheduleNextPacket(t, routes);
+
+                        continue;
+                    }
 
                     // 推进链路忙碌状态
                     _linkBusyUntil[linkKey] = _currentTime + queueDelay + transmitDelay;
@@ -138,13 +170,15 @@ namespace Pytools.Services
             {
                 foreach (var kv in _flowDelays)
                 {
-                    double avgDelay = kv.Value.Average();
-                    double lossRate = 0.0;
+                    double avgDelay = kv.Value.Count > 0 ? kv.Value.Average() : 0.0;
+                    int sent = _flowSent.GetValueOrDefault(kv.Key, 0);
+                    int dropped = _flowDropped.GetValueOrDefault(kv.Key, 0);
+                    double actualLossRate = sent > 0 ? (double)dropped / sent : 0.0;
                     int peakQueue = _flowPeakQueues.GetValueOrDefault(kv.Key, 0);
                     flows[kv.Key] = new
                     {
                         avg_delay_ms = Math.Round(avgDelay, 3),
-                        loss_rate = Math.Round(lossRate, 4),
+                        loss_rate = Math.Round(actualLossRate, 4),
                         peak_queue = peakQueue,
                     };
                 }

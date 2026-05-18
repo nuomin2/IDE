@@ -289,6 +289,8 @@ try:
         import matplotlib
         matplotlib.use('Agg')
         import matplotlib.pyplot as _plt
+        _plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'sans-serif']
+        _plt.rcParams['axes.unicode_minus'] = False
 
         def _pytools_show(*_args, **_kwargs):
             for _fignum in _plt.get_fignums():
