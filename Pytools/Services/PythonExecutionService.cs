@@ -319,10 +319,10 @@ for _name, _val in list(globals().items()):
     if _name in _ide_boot_snapshots:
         continue
     _t = type(_val)
-    if _t in (types.ModuleType, types.FunctionType, types.BuiltinFunctionType):
+    _tname = _t.__name__
+    if _t is type or _tname == 'Simulator' or _t in (types.ModuleType, types.FunctionType, types.BuiltinFunctionType):
         continue
 
-    _tname = _t.__name__
     _color = '#455a64'
     if isinstance(_val, bool):
         _color = '#7b1fa2'

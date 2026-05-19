@@ -3,6 +3,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using AvalonDock.Layout;
 using ICSharpCode.AvalonEdit;
 using Pytools.Models;
@@ -36,8 +37,15 @@ namespace Pytools.Views
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
                     if (ConsoleListBox.Items.Count > 0)
-                        ConsoleListBox.ScrollIntoView(ConsoleListBox.Items[^1]);
-                }));
+                    {
+                        if (VisualTreeHelper.GetChildrenCount(ConsoleListBox) > 0)
+                        {
+                            var border = VisualTreeHelper.GetChild(ConsoleListBox, 0) as Decorator;
+                            var scrollViewer = border?.Child as ScrollViewer;
+                            scrollViewer?.ScrollToBottom();
+                        }
+                    }
+                }), DispatcherPriority.Background);
             };
 
             _viewModel.ConsoleActivateRequested += () =>
