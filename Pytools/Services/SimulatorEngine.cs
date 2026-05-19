@@ -50,17 +50,15 @@ namespace Pytools.Services
 
                 if (evt.Type == "PACKET_ARRIVAL")
                 {
-                    _totalPackets++;
-
                     string flowKey = $"{evt.SrcId}->{evt.DstId}";
                     if (!_flowDelays.ContainsKey(flowKey))
                         _flowDelays[flowKey] = new List<double>();
 
-                    // 找到本包经过的链路: SrcId → CurrentNodeId
-                    string linkKey = $"{evt.SrcId}->{evt.CurrentNodeId}";
+                    // 找到本包经过的链路: FromNodeId → CurrentNodeId
+                    string linkKey = $"{evt.FromNodeId}->{evt.CurrentNodeId}";
                     var link = _request.Links.FirstOrDefault(l =>
-                        (l.Src == evt.SrcId && l.Dst == evt.CurrentNodeId)
-                     || (l.Src == evt.CurrentNodeId && l.Dst == evt.SrcId));
+                        (l.Src == evt.FromNodeId && l.Dst == evt.CurrentNodeId)
+                     || (l.Src == evt.CurrentNodeId && l.Dst == evt.FromNodeId));
 
                     double linkDelay = link?.Delay ?? 1.0;
                     double linkBwMbps = link?.Bw ?? 100;
@@ -75,10 +73,18 @@ namespace Pytools.Services
                         _linkBusyUntil[linkKey] = 0.0;
                     double queueDelay = Math.Max(0.0, _linkBusyUntil[linkKey] - _currentTime);
 
-                    // 统计发包
-                    _flowSent[flowKey] = _flowSent.GetValueOrDefault(flowKey, 0) + 1;
+                    // ★ 只有从流量源发出的第一跳才调度下一个新包，中间路由器转发不触发
+                    bool isFirstHop = evt.FromNodeId == evt.SrcId;
+                    if (isFirstHop)
+                    {
+                        _totalPackets++;
+                        _flowSent[flowKey] = _flowSent.GetValueOrDefault(flowKey, 0) + 1;
+                        var traffic = _request.Traffic.First(t =>
+                            t.Src == evt.SrcId && t.Dst == evt.DstId);
+                        ScheduleNextPacket(traffic, routes);
+                    }
 
-                    // 三层丢包屏障
+                    // 三层丢包屏障（每跳独立判定）
                     double dropRate = link?.DropRate ?? 0.0;
                     int maxQ = link?.MaxQueueDepth ?? 100;
                     double maxTime = link?.MaxTimeoutMs ?? 50.0;
@@ -96,33 +102,53 @@ namespace Pytools.Services
                     if (isDropped)
                     {
                         _flowDropped[flowKey] = _flowDropped.GetValueOrDefault(flowKey, 0) + 1;
-
-                        // 即使当前包被丢弃，也必须调度该流的下一个包，否则会导致永久断流
-                        var t = _request.Traffic.First(x =>
-                            x.Src == evt.SrcId && x.Dst == evt.DstId);
-                        ScheduleNextPacket(t, routes);
-
                         continue;
                     }
 
                     // 推进链路忙碌状态
                     _linkBusyUntil[linkKey] = _currentTime + queueDelay + transmitDelay;
 
-                    // 包总时延 = 传播延迟 + 排队时延 + 发送时延
-                    double totalDelay = linkDelay + queueDelay + transmitDelay;
-                    _allPacketDelays.Add(totalDelay);
-                    _flowDelays[flowKey].Add(totalDelay);
+                    double hopDelay = linkDelay + queueDelay + transmitDelay;
 
-                    // 峰值队列
+                    // 峰值队列（每跳参与比较，拥塞常发生在中间路由器）
                     int q = (int)(queueDelay * 10);
                     if (!_flowPeakQueues.ContainsKey(flowKey))
                         _flowPeakQueues[flowKey] = 0;
                     if (q > _flowPeakQueues[flowKey])
                         _flowPeakQueues[flowKey] = q;
 
-                    var traffic = _request.Traffic.First(t =>
-                        t.Src == evt.SrcId && t.Dst == evt.DstId);
-                    ScheduleNextPacket(traffic, routes);
+                    if (evt.CurrentNodeId == evt.DstId)
+                    {
+                        // ★ 到达终点：端到端时延 = 当前时间 + 最后一跳耗时 - 出生时间
+                        double endToEndDelay = (_currentTime + hopDelay) - evt.CreationTime;
+                        _allPacketDelays.Add(endToEndDelay);
+                        _flowDelays[flowKey].Add(endToEndDelay);
+                    }
+                    else
+                    {
+                        // ★ 需要继续转发：查路由表找下一跳
+                        if (routes.TryGetValue(evt.CurrentNodeId, out var nextHops)
+                            && nextHops.TryGetValue(evt.DstId, out string? nextHopId)
+                            && nextHopId != null)
+                        {
+                            var forwardEvent = new SimEvent
+                            {
+                                Type = "PACKET_ARRIVAL",
+                                SrcId = evt.SrcId,
+                                DstId = evt.DstId,
+                                CurrentNodeId = nextHopId,
+                                PayloadSize = evt.PayloadSize,
+                                IntervalMean = evt.IntervalMean,
+                                PayloadMean = evt.PayloadMean,
+                                PayloadVariance = evt.PayloadVariance,
+                                CreationTime = evt.CreationTime,
+                                FromNodeId = evt.CurrentNodeId,
+                            };
+                            _eventQueue.Enqueue(forwardEvent,
+                                (_currentTime + hopDelay, ++_eventIdCounter));
+                        }
+                        // else: 路由不可达，包被静默丢弃
+                    }
                 }
             }
 
@@ -220,6 +246,8 @@ namespace Pytools.Services
                 ? routes[traffic.Src][traffic.Dst]
                 : traffic.Dst;
 
+            double scheduleTime = _currentTime + interval;
+
             var evt = new SimEvent
             {
                 Type = "PACKET_ARRIVAL",
@@ -230,9 +258,10 @@ namespace Pytools.Services
                 IntervalMean = traffic.IntervalMean,
                 PayloadMean = traffic.PayloadMean,
                 PayloadVariance = traffic.PayloadVariance,
+                CreationTime = scheduleTime,
+                FromNodeId = traffic.Src,
             };
 
-            double scheduleTime = _currentTime + interval;
             _eventQueue.Enqueue(evt, (scheduleTime, ++_eventIdCounter));
         }
 
@@ -241,23 +270,66 @@ namespace Pytools.Services
             var routes = new Dictionary<string, Dictionary<string, string>>();
             var nodeIds = _request.Nodes.Select(n => n.Id).ToHashSet();
 
-            var hostToRouter = new Dictionary<string, string>();
+            // 构建无向加权邻接表: 权重 = link.Delay (最小 1.0 防错)
+            var adj = new Dictionary<string, List<(string Neighbor, double Weight)>>();
+            foreach (var nodeId in nodeIds)
+                adj[nodeId] = new List<(string, double)>();
+
             foreach (var link in _request.Links)
             {
-                bool srcIsHost = _request.Nodes.Any(n => n.Id == link.Src && n.Type == "Host");
-                bool dstIsHost = _request.Nodes.Any(n => n.Id == link.Dst && n.Type == "Host");
-
-                if (srcIsHost) hostToRouter[link.Src] = link.Dst;
-                if (dstIsHost) hostToRouter[link.Dst] = link.Src;
+                double w = link.Delay > 0 ? link.Delay : 1.0;
+                adj[link.Src].Add((link.Dst, w));
+                adj[link.Dst].Add((link.Src, w));
             }
 
-            foreach (var hostId in hostToRouter.Keys)
+            // Dijkstra: 对每个源节点计算到全图的最短路径
+            foreach (var source in nodeIds)
             {
-                routes[hostId] = new Dictionary<string, string>();
-                foreach (var dst in nodeIds)
+                var dist = new Dictionary<string, double>();
+                var prev = new Dictionary<string, string>();
+
+                foreach (var v in nodeIds)
                 {
-                    if (dst == hostId) continue;
-                    routes[hostId][dst] = hostToRouter[hostId];
+                    dist[v] = double.PositiveInfinity;
+                    prev[v] = "";
+                }
+                dist[source] = 0;
+
+                var pq = new PriorityQueue<string, double>();
+                pq.Enqueue(source, 0);
+
+                while (pq.Count > 0)
+                {
+                    if (!pq.TryDequeue(out var u, out var d))
+                        continue;
+                    if (d > dist[u])
+                        continue;
+
+                    foreach (var (v, w) in adj[u])
+                    {
+                        double alt = dist[u] + w;
+                        if (alt < dist[v])
+                        {
+                            dist[v] = alt;
+                            prev[v] = u;
+                            pq.Enqueue(v, alt);
+                        }
+                    }
+                }
+
+                routes[source] = new Dictionary<string, string>();
+                foreach (var dest in nodeIds)
+                {
+                    if (dest == source || double.IsInfinity(dist[dest]))
+                        continue;
+
+                    // 回溯: 从 dest 沿 prev 链走到 source 的前驱，即下一跳
+                    string curr = dest;
+                    while (prev[curr] != source && prev[curr] != "")
+                        curr = prev[curr];
+
+                    if (prev[curr] == source)
+                        routes[source][dest] = curr;
                 }
             }
 

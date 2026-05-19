@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sys
 from typing import Optional
 
@@ -77,8 +78,11 @@ class Simulator:
     def add_node(self, node: Node) -> None:
         self.nodes.append(node)
 
-    def add_link(self, src: str, dst: str, bw: int, delay: float) -> None:
-        self.links.append(Link(src, dst, bw, delay))
+    def add_link(self, src: str, dst: str, bw: int, delay: float,
+                 drop_rate: float = 0.0, max_queue_depth: int = 100,
+                 max_timeout_ms: float = 50.0) -> None:
+        self.links.append(Link(src, dst, bw, delay,
+                               drop_rate, max_queue_depth, max_timeout_ms))
 
     def add_traffic(
         self,
@@ -92,6 +96,50 @@ class Simulator:
         self.traffics.append(
             Traffic(src, dst, type, interval_mean, payload_mean, payload_variance)
         )
+
+    def draw_topology(self) -> None:
+        """绘制当前拓扑结构的无向图（圆形布局）。"""
+        if not self.nodes:
+            return
+
+        n = len(self.nodes)
+        pos: dict[str, tuple[float, float]] = {}
+
+        # 圆形布局: 第 i 个节点角度 = 2π·i / N
+        for i, node in enumerate(self.nodes):
+            theta = 2 * math.pi * i / n
+            pos[node.id] = (math.cos(theta), math.sin(theta))
+
+        plt.figure(figsize=(8, 8))
+
+        # 绘制链路（连线 + 中点标注时延）
+        for link in self.links:
+            if link.src not in pos or link.dst not in pos:
+                continue
+            x1, y1 = pos[link.src]
+            x2, y2 = pos[link.dst]
+            plt.plot([x1, x2], [y1, y2], color="#90A4AE", linewidth=2, zorder=1)
+            mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+            plt.text(mx, my, f"{link.delay}ms", fontsize=8,
+                     color="#546E7A", ha="center", va="bottom",
+                     bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
+                               edgecolor="none", alpha=0.8))
+
+        # 绘制节点（Host=蓝色圆形, Router=橙色方形）
+        for node in self.nodes:
+            x, y = pos[node.id]
+            if node.__class__.__name__ == "Host":
+                plt.scatter(x, y, s=300, c="#42A5F5", edgecolors="#1E88E5",
+                           linewidths=2, marker="s", zorder=2)
+            else:
+                plt.scatter(x, y, s=500, c="#FFA726", edgecolors="#EF6C00",
+                           linewidths=2, marker="o", zorder=2)
+            plt.text(x, y, node.id, fontsize=10, fontweight="bold",
+                     color="white", ha="center", va="center", zorder=3)
+
+        plt.axis("off")
+        plt.tight_layout()
+        plt.show()
 
     def run(
         self,

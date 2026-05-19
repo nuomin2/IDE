@@ -10,5 +10,7 @@ namespace Pytools.Models.Simulation
         public double IntervalMean { get; set; }
         public double PayloadMean { get; set; }
         public double PayloadVariance { get; set; }
+        public double CreationTime { get; set; }
+        public string FromNodeId { get; set; } = "";
     }
 }
