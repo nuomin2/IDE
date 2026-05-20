@@ -269,6 +269,7 @@ namespace Pytools.Services
         {
             var routes = new Dictionary<string, Dictionary<string, string>>();
             var nodeIds = _request.Nodes.Select(n => n.Id).ToHashSet();
+            var hostIds = _request.Nodes.Where(n => n.Type == "Host").Select(n => n.Id).ToHashSet();
 
             // 构建无向加权邻接表: 权重 = link.Delay (最小 1.0 防错)
             var adj = new Dictionary<string, List<(string Neighbor, double Weight)>>();
@@ -303,6 +304,10 @@ namespace Pytools.Services
                     if (!pq.TryDequeue(out var u, out var d))
                         continue;
                     if (d > dist[u])
+                        continue;
+
+                    // Host 不能作为中间转发节点（但作为 source 时可向外松弛）
+                    if (u != source && hostIds.Contains(u))
                         continue;
 
                     foreach (var (v, w) in adj[u])

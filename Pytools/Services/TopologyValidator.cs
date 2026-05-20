@@ -23,26 +23,21 @@ namespace Pytools.Services
                     return $"拓扑校验失败：主机 '{link.Src}' 与 '{link.Dst}' 之间不允许直连。";
             }
 
-            // Gather adjacency count from Host → Router
-            var hostLinkCount = new System.Collections.Generic.Dictionary<string, int>();
+            // Rule b: Each Host must connect to at least one Router (multi-homing allowed)
+            var hostHasLink = new System.Collections.Generic.Dictionary<string, bool>();
             foreach (var hostId in hostIds)
-                hostLinkCount[hostId] = 0;
+                hostHasLink[hostId] = false;
 
             foreach (var link in request.Links)
             {
-                if (hostIds.Contains(link.Src) && routerIds.Contains(link.Dst))
-                    hostLinkCount[link.Src]++;
-
-                if (hostIds.Contains(link.Dst) && routerIds.Contains(link.Src))
-                    hostLinkCount[link.Dst]++;
+                if (hostIds.Contains(link.Src)) hostHasLink[link.Src] = true;
+                if (hostIds.Contains(link.Dst)) hostHasLink[link.Dst] = true;
             }
 
-            // Rule b: Each Host must connect to EXACTLY one Router
-            foreach (var hostId in hostIds)
+            foreach (var kv in hostHasLink)
             {
-                int count = hostLinkCount[hostId];
-                if (count != 1)
-                    return $"拓扑校验失败：主机 '{hostId}' 未连接或连接了多个路由器。它必须且只能连接一个默认网关。";
+                if (!kv.Value)
+                    return $"拓扑校验失败：主机 '{kv.Key}' 未连接任何节点。主机必须至少连接一个路由器。";
             }
 
             return null; // Passed
