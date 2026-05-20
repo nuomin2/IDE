@@ -85,11 +85,42 @@ class Simulator:
     def add_node(self, node: Node) -> None:
         self.nodes.append(node)
 
-    def add_link(self, src: str, dst: str, bw: int, delay: float,
-                 drop_rate: float = 0.0, max_queue_kb: float | None = None,
-                 max_timeout_ms: float = 50.0) -> None:
+    def TrunkLink(self, src: str, dst: str, bw: int, delay: float,
+                  drop_rate: float = 0.0, max_queue_kb: float | None = None,
+                  max_timeout_ms: float = 50.0) -> None:
+        src_node = next((n for n in self.nodes if n.id == src), None)
+        dst_node = next((n for n in self.nodes if n.id == dst), None)
+        if isinstance(src_node, Host) or isinstance(dst_node, Host):
+            raise ValueError(
+                "TrunkLink 专用于路由器之间的骨干网连接，"
+                "边缘接入请使用 AccessLink 方法！"
+            )
         self.links.append(Link(src, dst, bw, delay,
                                drop_rate, max_queue_kb, max_timeout_ms))
+
+    def AccessLink(self, host: str, router: str,
+                   uplink_bw: int, uplink_delay: float,
+                   downlink_bw: int, downlink_delay: float,
+                   max_timeout_ms: float = 50.0) -> None:
+        host_node = next((n for n in self.nodes if n.id == host), None)
+        router_node = next((n for n in self.nodes if n.id == router), None)
+        if not isinstance(host_node, Host) or not isinstance(router_node, Router):
+            raise ValueError(
+                "AccessLink 必须精确连接一个 Host 节点和一个 Router 节点！"
+            )
+
+        rtt_ms = uplink_delay + downlink_delay
+        down_bdp_bytes = (downlink_bw * 125.0) * rtt_ms
+        down_q_kb = max(15.0, down_bdp_bytes / 1024.0)
+        up_bdp_bytes = (uplink_bw * 125.0) * rtt_ms
+        up_q_kb = max(15.0, up_bdp_bytes / 1024.0)
+
+        # 下行：Router → Host
+        self.links.append(Link(router, host, downlink_bw, downlink_delay,
+                               0.0, down_q_kb, max_timeout_ms))
+        # 上行：Host → Router
+        self.links.append(Link(host, router, uplink_bw, uplink_delay,
+                               0.0, up_q_kb, max_timeout_ms))
 
     def add_traffic(
         self,
@@ -109,43 +140,69 @@ class Simulator:
         if not self.nodes:
             return
 
-        n = len(self.nodes)
+        hosts = [n for n in self.nodes if isinstance(n, Host)]
+        routers = [n for n in self.nodes if isinstance(n, Router)]
         pos: dict[str, tuple[float, float]] = {}
 
-        # 圆形布局: 第 i 个节点角度 = 2π·i / N
-        for i, node in enumerate(self.nodes):
-            theta = 2 * math.pi * i / n
-            pos[node.id] = (math.cos(theta), math.sin(theta))
+        # 内环 Router: 单节点原点，多节点均匀分布在半径 0.4
+        nr = len(routers)
+        if nr == 1:
+            pos[routers[0].id] = (0.0, 0.0)
+        else:
+            for i, router in enumerate(routers):
+                theta = 2 * math.pi * i / nr
+                pos[router.id] = (0.4 * math.cos(theta), 0.4 * math.sin(theta))
 
-        plt.figure(figsize=(8, 8))
+        # 外环 Host: 均匀分布在半径 1.0，90° 相位偏移
+        nh = len(hosts)
+        if nh > 0:
+            for i, host in enumerate(hosts):
+                theta = 2 * math.pi * i / nh + math.pi / 2
+                pos[host.id] = (1.0 * math.cos(theta), 1.0 * math.sin(theta))
 
-        # 绘制链路（连线 + 中点标注时延）
+        fig, ax = plt.subplots(figsize=(10, 10))
+
+        # 标准直线 + 时延文本（仅 TrunkLink 绘制）
+        drawn_labels: set[tuple[str, str]] = set()
         for link in self.links:
             if link.src not in pos or link.dst not in pos:
                 continue
             x1, y1 = pos[link.src]
             x2, y2 = pos[link.dst]
-            plt.plot([x1, x2], [y1, y2], color="#90A4AE", linewidth=2, zorder=1)
-            mx, my = (x1 + x2) / 2, (y1 + y2) / 2
-            plt.text(mx, my, f"{link.delay}ms", fontsize=8,
-                     color="#546E7A", ha="center", va="bottom",
-                     bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
-                               edgecolor="none", alpha=0.8))
 
-        # 绘制节点（Host=蓝色圆形, Router=橙色方形）
+            plt.plot([x1, x2], [y1, y2], color="#78909C", zorder=1)
+
+            src_node = next((n for n in self.nodes if n.id == link.src), None)
+            dst_node = next((n for n in self.nodes if n.id == link.dst), None)
+            is_trunk = (isinstance(src_node, Router) and isinstance(dst_node, Router))
+            if is_trunk:
+                pair = tuple(sorted((link.src, link.dst)))
+                if pair not in drawn_labels:
+                    drawn_labels.add(pair)
+                    mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+                    ax.text(mx, my, f"{link.delay}ms", fontsize=8,
+                            color="#37474F", ha="center", va="bottom",
+                            bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
+                                      edgecolor="none", alpha=0.85),
+                            zorder=4)
+
+        # 节点 + 标签
         for node in self.nodes:
             x, y = pos[node.id]
-            if node.__class__.__name__ == "Host":
-                plt.scatter(x, y, s=300, c="#42A5F5", edgecolors="#1E88E5",
-                           linewidths=2, marker="s", zorder=2)
+            if isinstance(node, Host):
+                ax.scatter(x, y, s=400, c="#2196F3", edgecolors="#1565C0",
+                           linewidths=2, marker="s", zorder=3)
             else:
-                plt.scatter(x, y, s=500, c="#FFA726", edgecolors="#EF6C00",
-                           linewidths=2, marker="o", zorder=2)
-            plt.text(x, y, node.id, fontsize=10, fontweight="bold",
-                     color="white", ha="center", va="center", zorder=3)
+                ax.scatter(x, y, s=600, c="#FF9800", edgecolors="#E65100",
+                           linewidths=2, marker="o", zorder=3)
+            ax.text(x, y, node.id, fontsize=10, fontweight="bold",
+                    color="white", ha="center", va="center", zorder=5)
 
-        plt.axis("off")
-        plt.tight_layout()
+        ax.set_xlim(-1.5, 1.5)
+        ax.set_ylim(-1.5, 1.5)
+        ax.set_aspect("equal")
+        ax.axis("off")
+        fig.tight_layout()
         plt.show()
 
     def run(
@@ -153,7 +210,12 @@ class Simulator:
         simulation_time: int,
         seed: Optional[int] = None,
         summary_only: bool = False,
+        draw_topo: bool = False,
+        draw_cdf: bool = False,
     ) -> dict:
+        if draw_topo:
+            self.draw_topology()
+
         payload = {
             "simulation_time": simulation_time,
             "seed": seed,
@@ -192,7 +254,7 @@ class Simulator:
 
         _print_report(result, simulation_time, summary_only)
 
-        if "cdf_data" in result and result["cdf_data"]:
+        if draw_cdf and "cdf_data" in result and result["cdf_data"]:
             cdf = result["cdf_data"]
             x_delays = cdf.get("x_delays", [])
             y_probs = cdf.get("y_probabilities", [])

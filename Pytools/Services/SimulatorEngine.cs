@@ -37,7 +37,10 @@ namespace Pytools.Services
             var routes = ComputeRoutes();
 
             foreach (var link in _request.Links)
+            {
                 _linkBusyUntil[$"{link.Src}->{link.Dst}"] = 0.0;
+                _linkBusyUntil[$"{link.Dst}->{link.Src}"] = 0.0;
+            }
 
             foreach (var t in _request.Traffic)
                 ScheduleNextPacket(t, routes);
@@ -54,11 +57,16 @@ namespace Pytools.Services
                     if (!_flowDelays.ContainsKey(flowKey))
                         _flowDelays[flowKey] = new List<double>();
 
-                    // 找到本包经过的链路: FromNodeId → CurrentNodeId
-                    string linkKey = $"{evt.FromNodeId}->{evt.CurrentNodeId}";
+                    // 有向发送端口：FromNodeId→CurrentNodeId，与反向端口物理隔离
+                    string txPortKey = $"{evt.FromNodeId}->{evt.CurrentNodeId}";
+                    // 优先严格有向匹配（AccessLink 非对称参数），未命中则反向兼容（TrunkLink）
                     var link = _request.Links.FirstOrDefault(l =>
-                        (l.Src == evt.FromNodeId && l.Dst == evt.CurrentNodeId)
-                     || (l.Src == evt.CurrentNodeId && l.Dst == evt.FromNodeId));
+                        l.Src == evt.FromNodeId && l.Dst == evt.CurrentNodeId);
+                    if (link == null)
+                    {
+                        link = _request.Links.FirstOrDefault(l =>
+                            l.Src == evt.CurrentNodeId && l.Dst == evt.FromNodeId);
+                    }
 
                     double linkDelay = link?.Delay ?? 1.0;
                     double linkBwMbps = link?.Bw ?? 100;
@@ -68,10 +76,10 @@ namespace Pytools.Services
                     double bandwidthBps = linkBwMbps * 1_000_000.0;
                     double transmitDelay = packetBits / bandwidthBps * 1000.0;
 
-                    // 排队时延: 基于 LinkBusyUntil 状态推演
-                    if (!_linkBusyUntil.ContainsKey(linkKey))
-                        _linkBusyUntil[linkKey] = 0.0;
-                    double queueDelay = Math.Max(0.0, _linkBusyUntil[linkKey] - _currentTime);
+                    // 排队时延: 基于单向发送端口 LinkBusyUntil 状态推演
+                    if (!_linkBusyUntil.ContainsKey(txPortKey))
+                        _linkBusyUntil[txPortKey] = 0.0;
+                    double queueDelay = Math.Max(0.0, _linkBusyUntil[txPortKey] - _currentTime);
 
                     // ★ 只有从流量源发出的第一跳才调度下一个新包，中间路由器转发不触发
                     bool isFirstHop = evt.FromNodeId == evt.SrcId;
@@ -105,8 +113,8 @@ namespace Pytools.Services
                         continue;
                     }
 
-                    // 推进链路忙碌状态
-                    _linkBusyUntil[linkKey] = _currentTime + queueDelay + transmitDelay;
+                    // 推进单向发送端口忙碌状态（不影响反向端口）
+                    _linkBusyUntil[txPortKey] = _currentTime + queueDelay + transmitDelay;
 
                     double hopDelay = linkDelay + queueDelay + transmitDelay;
 
