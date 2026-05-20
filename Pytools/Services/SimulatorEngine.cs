@@ -86,16 +86,16 @@ namespace Pytools.Services
 
                     // 三层丢包屏障（每跳独立判定）
                     double dropRate = link?.DropRate ?? 0.0;
-                    int maxQ = link?.MaxQueueDepth ?? 100;
+                    int maxQBytes = link?.MaxQueueBytes ?? 15360;
                     double maxTime = link?.MaxTimeoutMs ?? 50.0;
 
+                    // 反推历史积压物理字节数 + 当前包形成瞬时队列深度
+                    double backlogBytes = queueDelay * linkBwMbps * 125.0;
+                    int currentQueueBytes = (int)backlogBytes + evt.PayloadSize;
+
                     bool isDropped = _rng.NextDouble() < dropRate;
-                    if (!isDropped)
-                    {
-                        int qDepth = (int)(queueDelay * 10);
-                        if (qDepth > maxQ)
-                            isDropped = true;
-                    }
+                    if (!isDropped && currentQueueBytes > maxQBytes)
+                        isDropped = true;
                     if (!isDropped && queueDelay > maxTime)
                         isDropped = true;
 
@@ -110,12 +110,11 @@ namespace Pytools.Services
 
                     double hopDelay = linkDelay + queueDelay + transmitDelay;
 
-                    // 峰值队列（每跳参与比较，拥塞常发生在中间路由器）
-                    int q = (int)(queueDelay * 10);
+                    // 峰值队列（每跳参与比较，使用真实物理字节数）
                     if (!_flowPeakQueues.ContainsKey(flowKey))
                         _flowPeakQueues[flowKey] = 0;
-                    if (q > _flowPeakQueues[flowKey])
-                        _flowPeakQueues[flowKey] = q;
+                    if (currentQueueBytes > _flowPeakQueues[flowKey])
+                        _flowPeakQueues[flowKey] = currentQueueBytes;
 
                     if (evt.CurrentNodeId == evt.DstId)
                     {

@@ -33,15 +33,22 @@ class Link:
     """A directed or undirected connection between two nodes."""
 
     def __init__(self, src: str, dst: str, bw: int, delay: float,
-                 drop_rate: float = 0.0, max_queue_depth: int = 100,
+                 drop_rate: float = 0.0, max_queue_kb: float | None = None,
                  max_timeout_ms: float = 50.0) -> None:
         self.src = src
         self.dst = dst
         self.bw = bw          # Mbps
         self.delay = delay    # ms
         self.drop_rate = drop_rate
-        self.max_queue_depth = max_queue_depth
         self.max_timeout_ms = max_timeout_ms
+
+        if max_queue_kb is None:
+            rtt_ms = delay * 2.0
+            bdp_bytes = (bw * 125.0) * rtt_ms
+            calculated_kb = bdp_bytes / 1024.0
+            self.max_queue_kb = max(15.0, calculated_kb)
+        else:
+            self.max_queue_kb = float(max_queue_kb)
 
 
 class Traffic:
@@ -79,10 +86,10 @@ class Simulator:
         self.nodes.append(node)
 
     def add_link(self, src: str, dst: str, bw: int, delay: float,
-                 drop_rate: float = 0.0, max_queue_depth: int = 100,
+                 drop_rate: float = 0.0, max_queue_kb: float | None = None,
                  max_timeout_ms: float = 50.0) -> None:
         self.links.append(Link(src, dst, bw, delay,
-                               drop_rate, max_queue_depth, max_timeout_ms))
+                               drop_rate, max_queue_kb, max_timeout_ms))
 
     def add_traffic(
         self,
@@ -156,7 +163,8 @@ class Simulator:
             ],
             "links": [
                 {"src": l.src, "dst": l.dst, "bw": l.bw, "delay": l.delay,
-                 "drop_rate": l.drop_rate, "max_queue_depth": l.max_queue_depth,
+                 "drop_rate": l.drop_rate,
+                 "max_queue_bytes": int(l.max_queue_kb * 1024),
                  "max_timeout_ms": l.max_timeout_ms}
                 for l in self.links
             ],
@@ -215,7 +223,7 @@ def _translate_keys(result: dict) -> dict:
     flow_map = {
         "avg_delay_ms": "平均时延（ms）",
         "loss_rate": "丢包率",
-        "peak_queue": "队列峰值",
+        "peak_queue": "峰值队列(KB)",
     }
 
     translated: dict = {}
@@ -225,9 +233,14 @@ def _translate_keys(result: dict) -> dict:
             nested: dict = {}
             for flow_name, flow_data in v.items():
                 if isinstance(flow_data, dict):
-                    nested[flow_name] = {
-                        flow_map.get(fk, fk): fv for fk, fv in flow_data.items()
-                    }
+                    translated_flow: dict = {}
+                    for fk, fv in flow_data.items():
+                        cn_key = flow_map.get(fk, fk)
+                        if fk == "peak_queue" and isinstance(fv, (int, float)):
+                            translated_flow[cn_key] = round(fv / 1024.0, 3)
+                        else:
+                            translated_flow[cn_key] = fv
+                    nested[flow_name] = translated_flow
             translated[new_key] = nested
         else:
             translated[new_key] = v
@@ -255,5 +268,5 @@ def _print_report(result: dict, sim_time: int, summary_only: bool) -> None:
             print(f"  [{flow_key}]")
             print(f"    平均时延:  {flow_data['avg_delay_ms']:.3f} ms")
             print(f"    丢包率:    {flow_data['loss_rate']:.4f}")
-            print(f"    队列峰值:  {flow_data['peak_queue']}")
+            print(f"    队列峰值 (KB):  {flow_data['peak_queue'] / 1024:.3f}")
     print("=" * n)

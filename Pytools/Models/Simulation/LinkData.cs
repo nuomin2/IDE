@@ -19,8 +19,8 @@ namespace Pytools.Models.Simulation
         [JsonPropertyName("drop_rate")]
         public double DropRate { get; set; } = 0.0;
 
-        [JsonPropertyName("max_queue_depth")]
-        public int MaxQueueDepth { get; set; } = 100;
+        [JsonPropertyName("max_queue_bytes")]
+        public int MaxQueueBytes { get; set; } = 15360;
 
         [JsonPropertyName("max_timeout_ms")]
         public double MaxTimeoutMs { get; set; } = 50.0;
