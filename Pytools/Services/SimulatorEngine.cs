@@ -22,6 +22,11 @@ namespace Pytools.Services
         private readonly Dictionary<string, double> _linkBusyUntil = new();
         private readonly Dictionary<string, int> _flowSent = new();
         private readonly Dictionary<string, int> _flowDropped = new();
+        private readonly Dictionary<string, long> _flowReceivedBytes = new();
+        private readonly Dictionary<string, double> _flowLastArrivalTime = new();
+        private readonly Dictionary<string, double> _flowJitterSum = new();
+        private readonly Dictionary<string, int> _flowReceivedCount = new();
+        private readonly Dictionary<string, int> _flowPeakCapacityBytes = new();
 
         public SimulatorEngine(SimulationRequest request)
         {
@@ -122,14 +127,26 @@ namespace Pytools.Services
                     if (!_flowPeakQueues.ContainsKey(flowKey))
                         _flowPeakQueues[flowKey] = 0;
                     if (currentQueueBytes > _flowPeakQueues[flowKey])
+                    {
                         _flowPeakQueues[flowKey] = currentQueueBytes;
+                        _flowPeakCapacityBytes[flowKey] = maxQBytes;
+                    }
 
                     if (evt.CurrentNodeId == evt.DstId)
                     {
-                        // ★ 到达终点：端到端时延 = 当前时间 + 最后一跳耗时 - 出生时间
                         double endToEndDelay = (_currentTime + hopDelay) - evt.CreationTime;
                         _allPacketDelays.Add(endToEndDelay);
                         _flowDelays[flowKey].Add(endToEndDelay);
+
+                        _flowReceivedBytes[flowKey] = _flowReceivedBytes.GetValueOrDefault(flowKey, 0) + evt.PayloadSize;
+                        int rcvd = _flowReceivedCount.GetValueOrDefault(flowKey, 0);
+                        if (rcvd > 0)
+                        {
+                            double jitter = Math.Abs(_currentTime - _flowLastArrivalTime[flowKey]);
+                            _flowJitterSum[flowKey] = _flowJitterSum.GetValueOrDefault(flowKey, 0) + jitter;
+                        }
+                        _flowLastArrivalTime[flowKey] = _currentTime;
+                        _flowReceivedCount[flowKey] = rcvd + 1;
                     }
                     else
                     {
@@ -208,11 +225,23 @@ namespace Pytools.Services
                     int dropped = _flowDropped.GetValueOrDefault(kv.Key, 0);
                     double actualLossRate = sent > 0 ? (double)dropped / sent : 0.0;
                     int peakQueue = _flowPeakQueues.GetValueOrDefault(kv.Key, 0);
+                    int peakCapacity = _flowPeakCapacityBytes.GetValueOrDefault(kv.Key, 15360);
+                    long receivedBytes = _flowReceivedBytes.GetValueOrDefault(kv.Key, 0);
+                    int count = _flowReceivedCount.GetValueOrDefault(kv.Key, 0);
+                    double jitterMs = count > 1
+                        ? _flowJitterSum.GetValueOrDefault(kv.Key, 0) / (count - 1)
+                        : 0.0;
+                    double throughputKbps = (receivedBytes * 8.0)
+                        / (_request.SimulationTime / 1000.0) / 1000.0;
+
                     flows[kv.Key] = new
                     {
                         avg_delay_ms = Math.Round(avgDelay, 3),
                         loss_rate = Math.Round(actualLossRate, 4),
                         peak_queue = peakQueue,
+                        throughput_kbps = Math.Round(throughputKbps, 2),
+                        jitter_ms = Math.Round(jitterMs, 3),
+                        peak_capacity = peakCapacity,
                     };
                 }
             }
@@ -221,7 +250,7 @@ namespace Pytools.Services
             {
                 ["status"] = "success",
                 ["total_packets"] = _totalPackets,
-                ["execution_time_sec"] = Math.Round(sw.Elapsed.TotalSeconds, 3),
+                ["execution_time_ms"] = sw.ElapsedMilliseconds,
                 ["global_avg_delay_ms"] = Math.Round(globalAvg, 3),
                 ["global_std_dev_ms"] = Math.Round(globalStdDev, 3),
                 ["cdf_data"] = cdf_data,

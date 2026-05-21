@@ -6,6 +6,8 @@ import sys
 from typing import Optional
 
 import matplotlib.pyplot as plt
+from matplotlib.ticker import PercentFormatter
+import networkx as nx
 
 
 class Node:
@@ -136,71 +138,38 @@ class Simulator:
         )
 
     def draw_topology(self) -> None:
-        """绘制当前拓扑结构的无向图（圆形布局）。"""
+        """使用 networkx 力导向布局绘制拓扑结构。"""
         if not self.nodes:
             return
 
-        hosts = [n for n in self.nodes if isinstance(n, Host)]
-        routers = [n for n in self.nodes if isinstance(n, Router)]
-        pos: dict[str, tuple[float, float]] = {}
+        G = nx.Graph()
 
-        # 内环 Router: 单节点原点，多节点均匀分布在半径 0.4
-        nr = len(routers)
-        if nr == 1:
-            pos[routers[0].id] = (0.0, 0.0)
-        else:
-            for i, router in enumerate(routers):
-                theta = 2 * math.pi * i / nr
-                pos[router.id] = (0.4 * math.cos(theta), 0.4 * math.sin(theta))
+        for node in self.nodes:
+            node_type = "Host" if isinstance(node, Host) else "Router"
+            G.add_node(node.id, type=node_type)
 
-        # 外环 Host: 均匀分布在半径 1.0，90° 相位偏移
-        nh = len(hosts)
-        if nh > 0:
-            for i, host in enumerate(hosts):
-                theta = 2 * math.pi * i / nh + math.pi / 2
-                pos[host.id] = (1.0 * math.cos(theta), 1.0 * math.sin(theta))
+        for link in self.links:
+            G.add_edge(link.src, link.dst)
+
+        pos = nx.spring_layout(G, seed=42)
+
+        hosts = [n.id for n in self.nodes if isinstance(n, Host)]
+        routers = [n.id for n in self.nodes if isinstance(n, Router)]
 
         fig, ax = plt.subplots(figsize=(10, 10))
 
-        # 标准直线 + 时延文本（仅 TrunkLink 绘制）
-        drawn_labels: set[tuple[str, str]] = set()
-        for link in self.links:
-            if link.src not in pos or link.dst not in pos:
-                continue
-            x1, y1 = pos[link.src]
-            x2, y2 = pos[link.dst]
+        nx.draw_networkx_edges(G, pos, ax=ax, edge_color="#78909C", width=1.5)
 
-            plt.plot([x1, x2], [y1, y2], color="#78909C", zorder=1)
+        nx.draw_networkx_nodes(G, pos, nodelist=hosts, ax=ax,
+                               node_size=400, node_color="#2196F3",
+                               edgecolors="#1565C0", linewidths=2, node_shape="s")
+        nx.draw_networkx_nodes(G, pos, nodelist=routers, ax=ax,
+                               node_size=600, node_color="#FF9800",
+                               edgecolors="#E65100", linewidths=2, node_shape="o")
 
-            src_node = next((n for n in self.nodes if n.id == link.src), None)
-            dst_node = next((n for n in self.nodes if n.id == link.dst), None)
-            is_trunk = (isinstance(src_node, Router) and isinstance(dst_node, Router))
-            if is_trunk:
-                pair = tuple(sorted((link.src, link.dst)))
-                if pair not in drawn_labels:
-                    drawn_labels.add(pair)
-                    mx, my = (x1 + x2) / 2, (y1 + y2) / 2
-                    ax.text(mx, my, f"{link.delay}ms", fontsize=8,
-                            color="#37474F", ha="center", va="bottom",
-                            bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
-                                      edgecolor="none", alpha=0.85),
-                            zorder=4)
+        nx.draw_networkx_labels(G, pos, ax=ax, font_size=10,
+                                font_weight="bold", font_color="white")
 
-        # 节点 + 标签
-        for node in self.nodes:
-            x, y = pos[node.id]
-            if isinstance(node, Host):
-                ax.scatter(x, y, s=400, c="#2196F3", edgecolors="#1565C0",
-                           linewidths=2, marker="s", zorder=3)
-            else:
-                ax.scatter(x, y, s=600, c="#FF9800", edgecolors="#E65100",
-                           linewidths=2, marker="o", zorder=3)
-            ax.text(x, y, node.id, fontsize=10, fontweight="bold",
-                    color="white", ha="center", va="center", zorder=5)
-
-        ax.set_xlim(-1.5, 1.5)
-        ax.set_ylim(-1.5, 1.5)
-        ax.set_aspect("equal")
         ax.axis("off")
         fig.tight_layout()
         plt.show()
@@ -264,7 +233,8 @@ class Simulator:
                          color="#1f77b4", linewidth=2)
                 plt.title("全局时延累积分布函数 (CDF)", fontsize=12, fontweight="bold")
                 plt.xlabel("时延 (ms)", fontsize=10)
-                plt.ylabel("累积概率 (Probability)", fontsize=10)
+                plt.ylabel("累积概率 (%)", fontsize=10)
+                plt.gca().yaxis.set_major_formatter(PercentFormatter(1.0))
                 plt.grid(True, linestyle="--", alpha=0.7)
                 plt.tight_layout()
                 plt.show()
@@ -277,15 +247,18 @@ def _translate_keys(result: dict) -> dict:
     top_map = {
         "status": "状态",
         "total_packets": "总发包数",
-        "execution_time_sec": "内核真实耗时（s）",
-        "global_avg_delay_ms": "全局平均时延（ms）",
-        "global_std_dev_ms": "时延标准差（ms）",
+        "execution_time_ms": "内核耗时 (ms)",
+        "global_avg_delay_ms": "全局平均时延 (ms)",
+        "global_std_dev_ms": "时延标准差 (ms)",
         "flows": "流量明细",
     }
     flow_map = {
-        "avg_delay_ms": "平均时延（ms）",
+        "avg_delay_ms": "平均时延 (ms)",
         "loss_rate": "丢包率",
         "peak_queue": "峰值队列(KB)",
+        "throughput_kbps": "流吞吐量",
+        "jitter_ms": "流平均抖动",
+        "peak_capacity": "峰值产生时容量(Bytes)",
     }
 
     translated: dict = {}
@@ -313,22 +286,25 @@ def _translate_keys(result: dict) -> dict:
 def _print_report(result: dict, sim_time: int, summary_only: bool) -> None:
     """Print a formatted ASCII report to the console (Spyder / IDE)."""
     n = 50
-    print("=" * n)
-    print("  仿真完成")
-    print("=" * n)
-    print(f"  状态:              {result.get('status', 'unknown')}")
-    print(f"  仿真时长 (s):      {sim_time}")
-    print(f"  总发包数:          {result.get('total_packets', 0)}")
-    print(f"  内核耗时 (s):      {result.get('execution_time_sec', 0):.3f}")
-    print(f"  平均时延 (ms):     {result.get('global_avg_delay_ms', 0):.3f}")
-    print(f"  时延标准差 (ms):   {result.get('global_std_dev_ms', 0):.3f}")
+    print("==================== 仿真完成 ====================")
+    print(f"  仿真时长:        {sim_time} s")
+    print(f"  总发包数量:      {result.get('total_packets', 0)}")
+    print(f"  内核耗时:        {result.get('execution_time_ms', 0):.0f} ms")
+    print(f"  全局平均时延:    {result.get('global_avg_delay_ms', 0):.3f} ms")
+    print(f"  全局时延标准差:  {result.get('global_std_dev_ms', 0):.3f} ms")
 
     flows = result.get("flows", {})
     if not summary_only and flows:
         print("  " + "-" * (n - 4))
         for flow_key, flow_data in flows.items():
             print(f"  [{flow_key}]")
-            print(f"    平均时延:  {flow_data['avg_delay_ms']:.3f} ms")
-            print(f"    丢包率:    {flow_data['loss_rate']:.4f}")
-            print(f"    队列峰值 (KB):  {flow_data['peak_queue'] / 1024:.3f}")
-    print("=" * n)
+
+            peak_kb = flow_data.get('peak_queue', 0) / 1024.0
+            cap_kb = flow_data.get('peak_capacity', 15360) / 1024.0
+            ratio = (peak_kb / cap_kb * 100) if cap_kb > 0 else 0.0
+
+            print(f"    流吞吐量:      {flow_data.get('throughput_kbps', 0):.2f} Kbps")
+            print(f"    流丢包率:      {flow_data.get('loss_rate', 0):.4f}")
+            print(f"    流平均延迟:    {flow_data.get('avg_delay_ms', 0):.3f} ms")
+            print(f"    流平均抖动:    {flow_data.get('jitter_ms', 0):.3f} ms")
+            print(f"    队列峰值/容量: {peak_kb:.2f} / {cap_kb:.2f} KB ({ratio:.1f}%)")
