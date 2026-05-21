@@ -87,7 +87,8 @@
                                   SelectedItemChanged="ProjectTreeView_SelectedItemChanged">
                                <TreeView.ItemContainerStyle>
                                  <Style TargetType="TreeViewItem" BasedOn="{StaticResource MaterialDesignTreeViewItem}">
-                                     <Setter Property="Padding" Value="8,4"/>
+                                     <Setter Property="Padding" Value="4,2"/>
+                                     <Setter Property="MinHeight" Value="24"/>
                                  </Style>
                                </TreeView.ItemContainerStyle>
                             </TreeView>
@@ -185,7 +186,7 @@
                                     </StackPanel>
                                 </Grid>
                             </xcad:LayoutAnchorable>
-                            <xcad:LayoutAnchorable Title="Debugger" CanHide="False" CanAutoHide="False"/>
+
                             <xcad:LayoutAnchorable Title="Plot Viewer" CanHide="False" CanAutoHide="False">
     <Grid>
         <Grid.RowDefinitions>
@@ -308,7 +309,6 @@
                                     </ListBox>
                                 </Border>
                             </xcad:LayoutAnchorable>
-                            <xcad:LayoutAnchorable Title="History" />
                         </xcad:LayoutAnchorablePane>
 
                     </xcad:LayoutPanel>
