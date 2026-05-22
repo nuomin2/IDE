@@ -13,5 +13,7 @@ namespace Pytools.Models.Simulation
         public double CreationTime { get; set; }
         public string FromNodeId { get; set; } = "";
         public int QosLevel { get; set; } // 0 = 普通(Low), 1 = 高优(High)
+        public int SrcPort { get; set; }
+        public int DstPort { get; set; }
     }
 }

@@ -61,7 +61,7 @@ namespace Pytools.Services
 
                 if (evt.Type == "PACKET_ARRIVAL")
                 {
-                    string flowKey = $"{evt.SrcId}->{evt.DstId}";
+                    string flowKey = $"{evt.SrcId}:{evt.SrcPort}->{evt.DstId}:{evt.DstPort}";
                     if (!_flowDelays.ContainsKey(flowKey))
                         _flowDelays[flowKey] = new List<double>();
 
@@ -101,8 +101,8 @@ namespace Pytools.Services
                         // 1. 推进高优时间轴
                         _linkBusyUntil_High[txPortKey] = completionTime;
 
-                        // 2. ★ 核心魔法：高优包霸权插队，强制顺延低优时间轴
-                        _linkBusyUntil_Low[txPortKey] = Math.Max(_linkBusyUntil_Low[txPortKey], completionTime);
+                        // 2. ★ 核心魔法：高优包霸权插队，强制顺延低优时间轴（含物理体积推迟）
+                        _linkBusyUntil_Low[txPortKey] = Math.Max(_linkBusyUntil_Low[txPortKey] + transmitDelay, completionTime);
                     }
                     else // ★ 低优先级 (Low - 默认)
                     {
@@ -120,7 +120,8 @@ namespace Pytools.Services
                         _totalPackets++;
                         _flowSent[flowKey] = _flowSent.GetValueOrDefault(flowKey, 0) + 1;
                         var traffic = _request.Traffic.First(t =>
-                            t.Src == evt.SrcId && t.Dst == evt.DstId);
+                            t.Src == evt.SrcId && t.Dst == evt.DstId
+                            && t.SrcPort == evt.SrcPort && t.DstPort == evt.DstPort);
                         ScheduleNextPacket(traffic, routes);
                     }
 
@@ -191,6 +192,9 @@ namespace Pytools.Services
                                 PayloadVariance = evt.PayloadVariance,
                                 CreationTime = evt.CreationTime,
                                 FromNodeId = evt.CurrentNodeId,
+                                SrcPort = evt.SrcPort,
+                                DstPort = evt.DstPort,
+                                QosLevel = evt.QosLevel,
                             };
                             _eventQueue.Enqueue(forwardEvent,
                                 (_currentTime + hopDelay, ++_eventIdCounter));
@@ -320,6 +324,9 @@ namespace Pytools.Services
                 PayloadVariance = traffic.PayloadVariance,
                 CreationTime = scheduleTime,
                 FromNodeId = traffic.Src,
+                SrcPort = traffic.SrcPort,
+                DstPort = traffic.DstPort,
+                QosLevel = traffic.QosLevel,
             };
 
             _eventQueue.Enqueue(evt, (scheduleTime, ++_eventIdCounter));

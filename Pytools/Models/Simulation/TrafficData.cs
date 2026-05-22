@@ -10,6 +10,15 @@ namespace Pytools.Models.Simulation
         [JsonPropertyName("dst")]
         public string Dst { get; set; } = "";
 
+        [JsonPropertyName("src_port")]
+        public int SrcPort { get; set; }
+
+        [JsonPropertyName("dst_port")]
+        public int DstPort { get; set; }
+
+        [JsonPropertyName("qos_level")]
+        public int QosLevel { get; set; }
+
         [JsonPropertyName("type")]
         public string Type { get; set; } = "";
 

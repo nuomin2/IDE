@@ -56,6 +56,8 @@ class Link:
 class Traffic:
     """Traffic flow definition between a source and destination."""
 
+    _ephemeral_port_pool = 49152
+
     def __init__(
         self,
         src: str,
@@ -64,6 +66,9 @@ class Traffic:
         interval_mean: float,
         payload_mean: int,
         payload_variance: float = 0.0,
+        src_port: int | None = None,
+        dst_port: int | None = None,
+        qos_level: int = 0,
     ) -> None:
         if type.upper() == "TCP":
             raise ValueError("当前版本暂不支持 TCP 协议。请使用 UDP。")
@@ -74,6 +79,19 @@ class Traffic:
         self.interval_mean = interval_mean
         self.payload_mean = payload_mean
         self.payload_variance = payload_variance
+        self.qos_level = qos_level
+
+        if src_port is None:
+            self.src_port = Traffic._ephemeral_port_pool
+            Traffic._ephemeral_port_pool += 1
+        else:
+            self.src_port = src_port
+
+        if dst_port is None:
+            self.dst_port = Traffic._ephemeral_port_pool
+            Traffic._ephemeral_port_pool += 1
+        else:
+            self.dst_port = dst_port
 
 
 class Simulator:
@@ -132,9 +150,13 @@ class Simulator:
         interval_mean: float,
         payload_mean: int,
         payload_variance: float = 0.0,
+        src_port: int | None = None,
+        dst_port: int | None = None,
+        qos_level: int = 0,
     ) -> None:
         self.traffics.append(
-            Traffic(src, dst, type, interval_mean, payload_mean, payload_variance)
+            Traffic(src, dst, type, interval_mean, payload_mean,
+                    payload_variance, src_port, dst_port, qos_level)
         )
 
     def draw_topology(self) -> None:
@@ -203,6 +225,9 @@ class Simulator:
                 {
                     "src": t.src,
                     "dst": t.dst,
+                    "src_port": t.src_port,
+                    "dst_port": t.dst_port,
+                    "qos_level": t.qos_level,
                     "type": t.type,
                     "interval_mean": t.interval_mean,
                     "payload_mean": t.payload_mean,
@@ -296,8 +321,29 @@ def _print_report(result: dict, sim_time: int, summary_only: bool) -> None:
     flows = result.get("flows", {})
     if not summary_only and flows:
         print("  " + "-" * (n - 4))
+        import re
+        # Pass 1: 统计每条 src->dst 的静默流（自动端口 >= 49152）数量
+        silent_flow_count: dict = {}
+        for fk in flows:
+            m = re.match(r'^(.+):(\d+)->(.+):(\d+)$', fk)
+            if m and int(m.group(2)) >= 49152 and int(m.group(4)) >= 49152:
+                base = f"{m.group(1)}->{m.group(3)}"
+                silent_flow_count[base] = silent_flow_count.get(base, 0) + 1
+        # Pass 2: 渲染，静默多流加序号、单流隐藏端口
+        silent_seq: dict = {}
         for flow_key, flow_data in flows.items():
-            print(f"  [{flow_key}]")
+            m = re.match(r'^(.+):(\d+)->(.+):(\d+)$', flow_key)
+            if m and int(m.group(2)) >= 49152 and int(m.group(4)) >= 49152:
+                base = f"{m.group(1)}->{m.group(3)}"
+                cnt = silent_flow_count.get(base, 0)
+                silent_seq[base] = silent_seq.get(base, 0) + 1
+                if cnt == 1:
+                    display_key = base
+                else:
+                    display_key = f"{base} (Flow {silent_seq[base]})"
+            else:
+                display_key = flow_key
+            print(f"  [{display_key}]")
 
             peak_kb = flow_data.get('peak_queue', 0) / 1024.0
             cap_kb = flow_data.get('peak_capacity', 15360) / 1024.0
