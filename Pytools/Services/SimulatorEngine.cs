@@ -19,7 +19,8 @@ namespace Pytools.Services
         private readonly List<double> _allPacketDelays = new();
         private readonly Dictionary<string, List<double>> _flowDelays = new();
         private readonly Dictionary<string, int> _flowPeakQueues = new();
-        private readonly Dictionary<string, double> _linkBusyUntil = new();
+        private readonly Dictionary<string, double> _linkBusyUntil_High = new();
+        private readonly Dictionary<string, double> _linkBusyUntil_Low = new();
         private readonly Dictionary<string, int> _flowSent = new();
         private readonly Dictionary<string, int> _flowDropped = new();
         private readonly Dictionary<string, long> _flowReceivedBytes = new();
@@ -43,8 +44,10 @@ namespace Pytools.Services
 
             foreach (var link in _request.Links)
             {
-                _linkBusyUntil[$"{link.Src}->{link.Dst}"] = 0.0;
-                _linkBusyUntil[$"{link.Dst}->{link.Src}"] = 0.0;
+                _linkBusyUntil_High[$"{link.Src}->{link.Dst}"] = 0.0;
+                _linkBusyUntil_High[$"{link.Dst}->{link.Src}"] = 0.0;
+                _linkBusyUntil_Low[$"{link.Src}->{link.Dst}"] = 0.0;
+                _linkBusyUntil_Low[$"{link.Dst}->{link.Src}"] = 0.0;
             }
 
             foreach (var t in _request.Traffic)
@@ -81,10 +84,34 @@ namespace Pytools.Services
                     double bandwidthBps = linkBwMbps * 1_000_000.0;
                     double transmitDelay = packetBits / bandwidthBps * 1000.0;
 
-                    // 排队时延: 基于单向发送端口 LinkBusyUntil 状态推演
-                    if (!_linkBusyUntil.ContainsKey(txPortKey))
-                        _linkBusyUntil[txPortKey] = 0.0;
-                    double queueDelay = Math.Max(0.0, _linkBusyUntil[txPortKey] - _currentTime);
+                    // ============ Step 5 & 6: 二维虚拟排队与双轴推进 ============
+                    // 兜底初始化（防备动态生成的未知端口）
+                    if (!_linkBusyUntil_High.ContainsKey(txPortKey))
+                    {
+                        _linkBusyUntil_High[txPortKey] = 0.0;
+                        _linkBusyUntil_Low[txPortKey] = 0.0;
+                    }
+
+                    double queueDelay = 0.0;
+                    if (evt.QosLevel == 1) // ★ 高优先级 (High)
+                    {
+                        queueDelay = Math.Max(0.0, _linkBusyUntil_High[txPortKey] - _currentTime);
+                        double completionTime = _currentTime + queueDelay + transmitDelay;
+
+                        // 1. 推进高优时间轴
+                        _linkBusyUntil_High[txPortKey] = completionTime;
+
+                        // 2. ★ 核心魔法：高优包霸权插队，强制顺延低优时间轴
+                        _linkBusyUntil_Low[txPortKey] = Math.Max(_linkBusyUntil_Low[txPortKey], completionTime);
+                    }
+                    else // ★ 低优先级 (Low - 默认)
+                    {
+                        queueDelay = Math.Max(0.0, _linkBusyUntil_Low[txPortKey] - _currentTime);
+                        double completionTime = _currentTime + queueDelay + transmitDelay;
+
+                        // 仅推进低优时间轴
+                        _linkBusyUntil_Low[txPortKey] = completionTime;
+                    }
 
                     // ★ 只有从流量源发出的第一跳才调度下一个新包，中间路由器转发不触发
                     bool isFirstHop = evt.FromNodeId == evt.SrcId;
@@ -117,9 +144,6 @@ namespace Pytools.Services
                         _flowDropped[flowKey] = _flowDropped.GetValueOrDefault(flowKey, 0) + 1;
                         continue;
                     }
-
-                    // 推进单向发送端口忙碌状态（不影响反向端口）
-                    _linkBusyUntil[txPortKey] = _currentTime + queueDelay + transmitDelay;
 
                     double hopDelay = linkDelay + queueDelay + transmitDelay;
 

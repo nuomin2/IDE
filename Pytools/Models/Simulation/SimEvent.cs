@@ -12,5 +12,6 @@ namespace Pytools.Models.Simulation
         public double PayloadVariance { get; set; }
         public double CreationTime { get; set; }
         public string FromNodeId { get; set; } = "";
+        public int QosLevel { get; set; } // 0 = 普通(Low), 1 = 高优(High)
     }
 }
