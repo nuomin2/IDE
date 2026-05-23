@@ -26,6 +26,8 @@ namespace Pytools.Services
         private readonly Dictionary<string, double> _flowLastArrivalTime = new();
         private readonly Dictionary<string, double> _flowJitterSum = new();
         private readonly Dictionary<string, int> _flowReceivedCount = new();
+        private long _targetLinkTxBytes;
+        private readonly int[] _targetLinkQueueBuckets = new int[10];
 
         public SimulatorEngine(SimulationRequest request)
         {
@@ -137,6 +139,20 @@ namespace Pytools.Services
                     if (!isDropped && queueDelay > maxTime)
                         isDropped = true;
 
+                    // ★ 目标链路探针采样（无论是否丢包，到达即采样）
+                    if (_request.TargetQueueLink != null
+                        && txPortKey == _request.TargetQueueLink)
+                    {
+                        double ratio = (double)currentQueueBytes / maxQBytes;
+                        int bucketIndex = (int)(ratio * 10);
+                        if (bucketIndex > 9) bucketIndex = 9;
+                        if (bucketIndex < 0) bucketIndex = 0;
+                        _targetLinkQueueBuckets[bucketIndex]++;
+
+                        if (!isDropped)
+                            _targetLinkTxBytes += evt.PayloadSize;
+                    }
+
                     if (isDropped)
                     {
                         _flowDropped[flowKey] = _flowDropped.GetValueOrDefault(flowKey, 0) + 1;
@@ -239,6 +255,28 @@ namespace Pytools.Services
                 }
             }
 
+            object? targetLinkStats = null;
+            if (_request.TargetQueueLink != null)
+            {
+                var parts = _request.TargetQueueLink.Split("->");
+                var tLink = _request.Links.FirstOrDefault(
+                    l => l.Src == parts[0] && l.Dst == parts[1]);
+                double tBwMbps = tLink?.Bw ?? 100.0;
+                double timeSeconds = _request.SimulationTime / 1000.0;
+                double utilizationPct = 0;
+                if (timeSeconds > 0 && tBwMbps > 0)
+                {
+                    double bps = (_targetLinkTxBytes * 8.0) / timeSeconds;
+                    utilizationPct = (bps / (tBwMbps * 1_000_000.0)) * 100.0;
+                }
+                targetLinkStats = new
+                {
+                    link_key = _request.TargetQueueLink,
+                    utilization_pct = utilizationPct,
+                    queue_buckets = _targetLinkQueueBuckets,
+                };
+            }
+
             return new Dictionary<string, object>
             {
                 ["status"] = "success",
@@ -248,6 +286,7 @@ namespace Pytools.Services
                 ["global_std_dev_ms"] = Math.Round(globalStdDev, 3),
                 ["cdf_data"] = cdf_data,
                 ["flows"] = flows,
+                ["target_link_stats"] = targetLinkStats,
             };
         }
 

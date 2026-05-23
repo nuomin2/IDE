@@ -103,8 +103,6 @@
                             <xcad:LayoutAnchorable Title="Variable Explorer" CanHide="False" CanAutoHide="False">
                                 <Grid>
                                     <DataGrid Name="VariableGrid"
-                                              ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                              ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                               AutoGenerateColumns="False"
                                               ItemsSource="{Binding VariableList}"
                                               Background="White"
@@ -284,8 +282,6 @@
                                                    CanAutoHide="False">
                                 <Border Background="#1E1E1E">
                                     <ListBox Name="ConsoleListBox"
-                                             ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                             ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                              ItemsSource="{Binding ConsoleLines}"
                                              Background="Transparent"
                                              BorderThickness="0"

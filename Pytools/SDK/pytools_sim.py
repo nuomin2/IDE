@@ -215,6 +215,7 @@ class Simulator:
         summary_only: bool = False,
         draw_topo: bool = False,
         draw_cdf: bool = False,
+        draw_queue: tuple = None,
     ) -> dict:
         if draw_topo:
             self.draw_topology()
@@ -223,6 +224,12 @@ class Simulator:
             "simulation_time": simulation_time,
             "seed": seed,
             "summary_only": summary_only,
+        }
+
+        if draw_queue and len(draw_queue) == 2:
+            payload["target_queue_link"] = f"{draw_queue[0]}->{draw_queue[1]}"
+
+        payload.update({
             "nodes": [
                 {"id": n.id, "type": n.__class__.__name__} for n in self.nodes
             ],
@@ -248,7 +255,7 @@ class Simulator:
                 }
                 for t in self.traffics
             ],
-        }
+        })
 
         json_string = json.dumps(payload, ensure_ascii=False)
         print(f"##SIM_START## {json_string} ##SIM_END##", flush=True)
@@ -338,6 +345,23 @@ class Simulator:
                     plt.tight_layout()
                     plt.show()
 
+        target_stats = result.get("target_link_stats")
+        if target_stats and target_stats.get("queue_buckets"):
+            buckets = target_stats["queue_buckets"]
+            labels = ["0-10%", "10-20%", "20-30%", "30-40%", "40-50%",
+                      "50-60%", "60-70%", "70-80%", "80-90%", "90-100%"]
+
+            plt.figure(figsize=(8, 5))
+            plt.bar(labels, buckets, color="#ff7f0e", edgecolor="black", alpha=0.8)
+            plt.title(f"Queue Occupancy Histogram ({target_stats['link_key']})",
+                      fontsize=12, fontweight="bold")
+            plt.xlabel("队列占用率区间", fontsize=10)
+            plt.ylabel("数据包到达频次 (Packets)", fontsize=10)
+            plt.xticks(rotation=45)
+            plt.grid(axis='y', linestyle='--', alpha=0.7)
+            plt.tight_layout()
+            plt.show()
+
         return _translate_keys(result)
 
 
@@ -422,3 +446,9 @@ def _print_report(result: dict, sim_time: int, summary_only: bool,
                 print()
 
             biz_idx += 1
+
+    target_stats = result.get("target_link_stats")
+    if target_stats:
+        print("-" * 46)
+        print(f"【链路探针分析】")
+        print(f"  {target_stats['link_key']} 链路利用率: {target_stats['utilization_pct']:.2f}%")

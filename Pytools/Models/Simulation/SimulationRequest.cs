@@ -20,6 +20,9 @@ namespace Pytools.Models.Simulation
         [JsonPropertyName("links")]
         public List<LinkData> Links { get; set; } = new();
 
+        [JsonPropertyName("target_queue_link")]
+        public string? TargetQueueLink { get; set; }
+
         [JsonPropertyName("traffic")]
         public List<TrafficData> Traffic { get; set; } = new();
     }
