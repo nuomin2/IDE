@@ -19,6 +19,9 @@ namespace Pytools.Models.Simulation
         [JsonPropertyName("qos_level")]
         public int QosLevel { get; set; }
 
+        [JsonPropertyName("flow_id")]
+        public int FlowId { get; set; }
+
         [JsonPropertyName("type")]
         public string Type { get; set; } = "";
 

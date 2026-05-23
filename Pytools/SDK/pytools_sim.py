@@ -57,6 +57,7 @@ class Traffic:
     """Traffic flow definition between a source and destination."""
 
     _ephemeral_port_pool = 49152
+    _global_flow_counter = 1
 
     def __init__(
         self,
@@ -69,6 +70,7 @@ class Traffic:
         src_port: int | None = None,
         dst_port: int | None = None,
         qos_level: int = 0,
+        flow_id: int | None = None,
     ) -> None:
         if type.upper() == "TCP":
             raise ValueError("当前版本暂不支持 TCP 协议。请使用 UDP。")
@@ -92,6 +94,15 @@ class Traffic:
             Traffic._ephemeral_port_pool += 1
         else:
             self.dst_port = dst_port
+
+        if flow_id is None:
+            self.flow_id = Traffic._global_flow_counter
+            Traffic._global_flow_counter += 1
+        else:
+            self.flow_id = flow_id
+            # 核心修复：防止未来隐式分配时撞车
+            if flow_id >= Traffic._global_flow_counter:
+                Traffic._global_flow_counter = flow_id + 1
 
 
 class Simulator:
@@ -153,10 +164,11 @@ class Simulator:
         src_port: int | None = None,
         dst_port: int | None = None,
         qos_level: int = 0,
+        flow_id: int | None = None,
     ) -> None:
         self.traffics.append(
             Traffic(src, dst, type, interval_mean, payload_mean,
-                    payload_variance, src_port, dst_port, qos_level)
+                    payload_variance, src_port, dst_port, qos_level, flow_id)
         )
 
     def draw_topology(self) -> None:
@@ -228,6 +240,7 @@ class Simulator:
                     "src_port": t.src_port,
                     "dst_port": t.dst_port,
                     "qos_level": t.qos_level,
+                    "flow_id": t.flow_id,
                     "type": t.type,
                     "interval_mean": t.interval_mean,
                     "payload_mean": t.payload_mean,
@@ -246,23 +259,84 @@ class Simulator:
         except (json.JSONDecodeError, Exception):
             result = {}
 
-        _print_report(result, simulation_time, summary_only)
+        _print_report(result, simulation_time, summary_only, self.traffics)
 
-        if draw_cdf and "cdf_data" in result and result["cdf_data"]:
-            cdf = result["cdf_data"]
-            x_delays = cdf.get("x_delays", [])
-            y_probs = cdf.get("y_probabilities", [])
-            if x_delays and y_probs:
-                plt.figure(figsize=(8, 5))
-                plt.plot(x_delays, y_probs, marker=".", linestyle="-",
-                         color="#1f77b4", linewidth=2)
-                plt.title("全局时延累积分布函数 (CDF)", fontsize=12, fontweight="bold")
+        if draw_cdf:
+            global_cdf = result.get("cdf_data")
+            flows_dict = result.get("flows", {})
+            colors = plt.get_cmap('tab10').colors
+
+            def _plot_setup(title, x, y, color, label=None, linewidth=2):
+                plt.plot(x, y, marker=".", linestyle="-",
+                         color=color, linewidth=linewidth, label=label)
+                plt.title(title, fontsize=12, fontweight="bold")
                 plt.xlabel("时延 (ms)", fontsize=10)
                 plt.ylabel("累积概率 (%)", fontsize=10)
                 plt.gca().yaxis.set_major_formatter(PercentFormatter(1.0))
                 plt.grid(True, linestyle="--", alpha=0.7)
                 plt.tight_layout()
-                plt.show()
+
+            if draw_cdf == "separate":
+                if global_cdf:
+                    plt.figure(figsize=(8, 5))
+                    _plot_setup("全局时延累积分布函数",
+                                global_cdf.get("x_delays", []),
+                                global_cdf.get("y_probabilities", []),
+                                color="black")
+                    plt.show()
+
+                flow_idx = 0
+                for fid, fdata in flows_dict.items():
+                    f_cdf = fdata.get("cdf_data")
+                    if f_cdf:
+                        plt.figure(figsize=(8, 5))
+                        c = colors[flow_idx % 10]
+                        _plot_setup(f"Flow{fid} 时延累积分布函数",
+                                    f_cdf.get("x_delays", []),
+                                    f_cdf.get("y_probabilities", []),
+                                    color=c)
+                        plt.show()
+                        flow_idx += 1
+            else:
+                plt.figure(figsize=(8, 5))
+                has_line = False
+
+                if draw_cdf in [True, "combined"] and global_cdf:
+                    plt.plot(global_cdf.get("x_delays", []),
+                             global_cdf.get("y_probabilities", []),
+                             marker=".", linestyle="-", color="black",
+                             linewidth=3, label="Global")
+                    has_line = True
+
+                if draw_cdf in ["combined", "flows"]:
+                    flow_idx = 0
+                    for fid, fdata in flows_dict.items():
+                        f_cdf = fdata.get("cdf_data")
+                        if f_cdf:
+                            c = colors[flow_idx % 10]
+                            plt.plot(f_cdf.get("x_delays", []),
+                                     f_cdf.get("y_probabilities", []),
+                                     marker=".", linestyle="-", color=c,
+                                     linewidth=1.5, label=f"Flow {fid}")
+                            has_line = True
+                            flow_idx += 1
+
+                if has_line:
+                    if draw_cdf == True:
+                        plt.title("全局时延累积分布函数", fontsize=12, fontweight="bold")
+                    elif draw_cdf == "combined":
+                        plt.title("全局与各流时延累积分布对比", fontsize=12, fontweight="bold")
+                        plt.legend()
+                    elif draw_cdf == "flows":
+                        plt.title("各业务流时延累积分布对比", fontsize=12, fontweight="bold")
+                        plt.legend()
+
+                    plt.xlabel("时延 (ms)", fontsize=10)
+                    plt.ylabel("累积概率 (%)", fontsize=10)
+                    plt.gca().yaxis.set_major_formatter(PercentFormatter(1.0))
+                    plt.grid(True, linestyle="--", alpha=0.7)
+                    plt.tight_layout()
+                    plt.show()
 
         return _translate_keys(result)
 
@@ -280,10 +354,8 @@ def _translate_keys(result: dict) -> dict:
     flow_map = {
         "avg_delay_ms": "平均时延 (ms)",
         "loss_rate": "丢包率",
-        "peak_queue": "峰值队列(KB)",
         "throughput_kbps": "流吞吐量",
         "jitter_ms": "流平均抖动",
-        "peak_capacity": "峰值产生时容量(Bytes)",
     }
 
     translated: dict = {}
@@ -296,10 +368,7 @@ def _translate_keys(result: dict) -> dict:
                     translated_flow: dict = {}
                     for fk, fv in flow_data.items():
                         cn_key = flow_map.get(fk, fk)
-                        if fk == "peak_queue" and isinstance(fv, (int, float)):
-                            translated_flow[cn_key] = round(fv / 1024.0, 3)
-                        else:
-                            translated_flow[cn_key] = fv
+                        translated_flow[cn_key] = fv
                     nested[flow_name] = translated_flow
             translated[new_key] = nested
         else:
@@ -308,49 +377,48 @@ def _translate_keys(result: dict) -> dict:
     return translated
 
 
-def _print_report(result: dict, sim_time: int, summary_only: bool) -> None:
+def _print_report(result: dict, sim_time: int, summary_only: bool,
+                  traffics: list | None = None) -> None:
     """Print a formatted ASCII report to the console (Spyder / IDE)."""
-    n = 50
     print("==================== 仿真完成 ====================")
-    print(f"  仿真时长:        {sim_time} s")
+    print(f"  仿真时长:        {sim_time} ms")
     print(f"  总发包数量:      {result.get('total_packets', 0)}")
     print(f"  内核耗时:        {result.get('execution_time_ms', 0):.0f} ms")
     print(f"  全局平均时延:    {result.get('global_avg_delay_ms', 0):.3f} ms")
     print(f"  全局时延标准差:  {result.get('global_std_dev_ms', 0):.3f} ms")
 
     flows = result.get("flows", {})
-    if not summary_only and flows:
-        print("  " + "-" * (n - 4))
-        import re
-        # Pass 1: 统计每条 src->dst 的静默流（自动端口 >= 49152）数量
-        silent_flow_count: dict = {}
-        for fk in flows:
-            m = re.match(r'^(.+):(\d+)->(.+):(\d+)$', fk)
-            if m and int(m.group(2)) >= 49152 and int(m.group(4)) >= 49152:
-                base = f"{m.group(1)}->{m.group(3)}"
-                silent_flow_count[base] = silent_flow_count.get(base, 0) + 1
-        # Pass 2: 渲染，静默多流加序号、单流隐藏端口
-        silent_seq: dict = {}
-        for flow_key, flow_data in flows.items():
-            m = re.match(r'^(.+):(\d+)->(.+):(\d+)$', flow_key)
-            if m and int(m.group(2)) >= 49152 and int(m.group(4)) >= 49152:
-                base = f"{m.group(1)}->{m.group(3)}"
-                cnt = silent_flow_count.get(base, 0)
-                silent_seq[base] = silent_seq.get(base, 0) + 1
-                if cnt == 1:
-                    display_key = base
-                else:
-                    display_key = f"{base} (Flow {silent_seq[base]})"
-            else:
-                display_key = flow_key
-            print(f"  [{display_key}]")
+    if not summary_only and flows and traffics:
+        # 按业务组 (Src->Dst) 聚合
+        business_groups: dict = {}
+        for t in traffics:
+            biz_key = f"[{t.src}->{t.dst}]"
+            if biz_key not in business_groups:
+                business_groups[biz_key] = []
+            business_groups[biz_key].append(t)
 
-            peak_kb = flow_data.get('peak_queue', 0) / 1024.0
-            cap_kb = flow_data.get('peak_capacity', 15360) / 1024.0
-            ratio = (peak_kb / cap_kb * 100) if cap_kb > 0 else 0.0
+        cn_nums = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"]
+        biz_idx = 1
 
-            print(f"    流吞吐量:      {flow_data.get('throughput_kbps', 0):.2f} Kbps")
-            print(f"    流丢包率:      {flow_data.get('loss_rate', 0):.4f}")
-            print(f"    流平均延迟:    {flow_data.get('avg_delay_ms', 0):.3f} ms")
-            print(f"    流平均抖动:    {flow_data.get('jitter_ms', 0):.3f} ms")
-            print(f"    队列峰值/容量: {peak_kb:.2f} / {cap_kb:.2f} KB ({ratio:.1f}%)")
+        for biz_key, t_list in business_groups.items():
+            biz_name = cn_nums[biz_idx] if biz_idx <= 10 else str(biz_idx)
+            print(f"----------------------------------------------")
+            print(f"业务{biz_name}：{biz_key}")
+
+            for t in t_list:
+                fid_str = str(t.flow_id)
+                if fid_str not in flows:
+                    continue
+                flow_data = flows[fid_str]
+
+                is_implicit = t.src_port >= 49152 and t.dst_port >= 49152
+                port_str = "" if is_implicit else f" ({t.src_port}->{t.dst_port})"
+
+                print(f"Flow{fid_str}{port_str} :")
+                print(f"  流吞吐量:      {flow_data.get('throughput_kbps', 0):.2f} Kbps")
+                print(f"  流丢包率:      {flow_data.get('loss_rate', 0) * 100:.2f}%")
+                print(f"  流平均延迟:    {flow_data.get('avg_delay_ms', 0):.3f} ms")
+                print(f"  流平均抖动:    {flow_data.get('jitter_ms', 0):.3f} ms")
+                print()
+
+            biz_idx += 1

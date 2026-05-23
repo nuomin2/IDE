@@ -18,7 +18,6 @@ namespace Pytools.Services
         private int _totalPackets;
         private readonly List<double> _allPacketDelays = new();
         private readonly Dictionary<string, List<double>> _flowDelays = new();
-        private readonly Dictionary<string, int> _flowPeakQueues = new();
         private readonly Dictionary<string, double> _linkBusyUntil_High = new();
         private readonly Dictionary<string, double> _linkBusyUntil_Low = new();
         private readonly Dictionary<string, int> _flowSent = new();
@@ -27,7 +26,6 @@ namespace Pytools.Services
         private readonly Dictionary<string, double> _flowLastArrivalTime = new();
         private readonly Dictionary<string, double> _flowJitterSum = new();
         private readonly Dictionary<string, int> _flowReceivedCount = new();
-        private readonly Dictionary<string, int> _flowPeakCapacityBytes = new();
 
         public SimulatorEngine(SimulationRequest request)
         {
@@ -61,7 +59,7 @@ namespace Pytools.Services
 
                 if (evt.Type == "PACKET_ARRIVAL")
                 {
-                    string flowKey = $"{evt.SrcId}:{evt.SrcPort}->{evt.DstId}:{evt.DstPort}";
+                    string flowKey = evt.FlowId.ToString();
                     if (!_flowDelays.ContainsKey(flowKey))
                         _flowDelays[flowKey] = new List<double>();
 
@@ -120,8 +118,7 @@ namespace Pytools.Services
                         _totalPackets++;
                         _flowSent[flowKey] = _flowSent.GetValueOrDefault(flowKey, 0) + 1;
                         var traffic = _request.Traffic.First(t =>
-                            t.Src == evt.SrcId && t.Dst == evt.DstId
-                            && t.SrcPort == evt.SrcPort && t.DstPort == evt.DstPort);
+                            t.FlowId == evt.FlowId);
                         ScheduleNextPacket(traffic, routes);
                     }
 
@@ -147,15 +144,6 @@ namespace Pytools.Services
                     }
 
                     double hopDelay = linkDelay + queueDelay + transmitDelay;
-
-                    // 峰值队列（每跳参与比较，使用真实物理字节数）
-                    if (!_flowPeakQueues.ContainsKey(flowKey))
-                        _flowPeakQueues[flowKey] = 0;
-                    if (currentQueueBytes > _flowPeakQueues[flowKey])
-                    {
-                        _flowPeakQueues[flowKey] = currentQueueBytes;
-                        _flowPeakCapacityBytes[flowKey] = maxQBytes;
-                    }
 
                     if (evt.CurrentNodeId == evt.DstId)
                     {
@@ -195,6 +183,7 @@ namespace Pytools.Services
                                 SrcPort = evt.SrcPort,
                                 DstPort = evt.DstPort,
                                 QosLevel = evt.QosLevel,
+                                FlowId = evt.FlowId,
                             };
                             _eventQueue.Enqueue(forwardEvent,
                                 (_currentTime + hopDelay, ++_eventIdCounter));
@@ -211,36 +200,15 @@ namespace Pytools.Services
 
             double globalAvg = 0.0;
             double globalStdDev = 0.0;
-            var x_delays = new List<double>();
-            var y_probabilities = new List<double>();
 
             if (N > 0)
             {
                 globalAvg = _allPacketDelays.Average();
                 if (N > 1)
                     globalStdDev = Math.Sqrt(_allPacketDelays.Average(d => Math.Pow(d - globalAvg, 2)));
-
-                if (N <= 100)
-                {
-                    x_delays.AddRange(_allPacketDelays);
-                    for (int i = 0; i < N; i++)
-                        y_probabilities.Add((double)(i + 1) / N);
-                }
-                else
-                {
-                    for (int p = 0; p <= 100; p++)
-                    {
-                        double quantile = p / 100.0;
-                        int idx = (int)Math.Round(quantile * (N - 1));
-                        if (idx < 0) idx = 0;
-                        if (idx >= N) idx = N - 1;
-                        x_delays.Add(_allPacketDelays[idx]);
-                        y_probabilities.Add(quantile);
-                    }
-                }
             }
 
-            var cdf_data = new { x_delays, y_probabilities };
+            var cdf_data = GenerateCdfData(_allPacketDelays);
 
             // summary_only 分支: 空 flows vs 详细 flows
             var flows = new Dictionary<string, object>();
@@ -252,8 +220,6 @@ namespace Pytools.Services
                     int sent = _flowSent.GetValueOrDefault(kv.Key, 0);
                     int dropped = _flowDropped.GetValueOrDefault(kv.Key, 0);
                     double actualLossRate = sent > 0 ? (double)dropped / sent : 0.0;
-                    int peakQueue = _flowPeakQueues.GetValueOrDefault(kv.Key, 0);
-                    int peakCapacity = _flowPeakCapacityBytes.GetValueOrDefault(kv.Key, 15360);
                     long receivedBytes = _flowReceivedBytes.GetValueOrDefault(kv.Key, 0);
                     int count = _flowReceivedCount.GetValueOrDefault(kv.Key, 0);
                     double jitterMs = count > 1
@@ -266,10 +232,9 @@ namespace Pytools.Services
                     {
                         avg_delay_ms = Math.Round(avgDelay, 3),
                         loss_rate = Math.Round(actualLossRate, 4),
-                        peak_queue = peakQueue,
                         throughput_kbps = Math.Round(throughputKbps, 2),
                         jitter_ms = Math.Round(jitterMs, 3),
-                        peak_capacity = peakCapacity,
+                        cdf_data = GenerateCdfData(kv.Value),
                     };
                 }
             }
@@ -284,6 +249,38 @@ namespace Pytools.Services
                 ["cdf_data"] = cdf_data,
                 ["flows"] = flows,
             };
+        }
+
+        private static object? GenerateCdfData(List<double> delays)
+        {
+            int M = delays.Count;
+            if (M == 0) return null;
+
+            var sorted = new List<double>(delays);
+            sorted.Sort();
+
+            var x_delays = new List<double>();
+            var y_probabilities = new List<double>();
+
+            if (M <= 100)
+            {
+                x_delays.AddRange(sorted);
+                for (int i = 0; i < M; i++)
+                    y_probabilities.Add((double)(i + 1) / M);
+            }
+            else
+            {
+                for (int p = 0; p <= 100; p++)
+                {
+                    double quantile = p / 100.0;
+                    int idx = (int)Math.Round(quantile * (M - 1));
+                    if (idx < 0) idx = 0;
+                    if (idx >= M) idx = M - 1;
+                    x_delays.Add(sorted[idx]);
+                    y_probabilities.Add(quantile);
+                }
+            }
+            return new { x_delays, y_probabilities };
         }
 
         private void ScheduleNextPacket(TrafficData traffic,
@@ -327,6 +324,7 @@ namespace Pytools.Services
                 SrcPort = traffic.SrcPort,
                 DstPort = traffic.DstPort,
                 QosLevel = traffic.QosLevel,
+                FlowId = traffic.FlowId,
             };
 
             _eventQueue.Enqueue(evt, (scheduleTime, ++_eventIdCounter));

@@ -15,5 +15,6 @@ namespace Pytools.Models.Simulation
         public int QosLevel { get; set; } // 0 = 普通(Low), 1 = 高优(High)
         public int SrcPort { get; set; }
         public int DstPort { get; set; }
+        public int FlowId { get; set; }
     }
 }
