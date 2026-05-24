@@ -191,9 +191,6 @@ namespace Pytools.Services
                                 DstId = evt.DstId,
                                 CurrentNodeId = nextHopId,
                                 PayloadSize = evt.PayloadSize,
-                                IntervalMean = evt.IntervalMean,
-                                PayloadMean = evt.PayloadMean,
-                                PayloadVariance = evt.PayloadVariance,
                                 CreationTime = evt.CreationTime,
                                 FromNodeId = evt.CurrentNodeId,
                                 SrcPort = evt.SrcPort,
@@ -325,22 +322,33 @@ namespace Pytools.Services
         private void ScheduleNextPacket(TrafficData traffic,
             Dictionary<string, Dictionary<string, string>> routes)
         {
-            double rate = 1.0 / traffic.IntervalMean;
-            var expDist = new Exponential(rate, _rng);
-            double interval = expDist.Sample();
+            // ===== 包间隔 =====
+            double interval = 0;
+            if (traffic.IntervalDist.Type == "exponential")
+            {
+                double rate = 1.0 / traffic.IntervalDist.Mean;
+                interval = new Exponential(rate, _rng).Sample();
+            }
+            else if (traffic.IntervalDist.Type == "constant")
+            {
+                interval = traffic.IntervalDist.Value;
+            }
 
-            int payloadSize;
-            if (traffic.PayloadVariance > 0 && traffic.PayloadMean > 0)
+            // ===== 包大小 =====
+            int payloadSize = 64;
+            if (traffic.PayloadDist.Type == "uniform")
             {
-                double stddev = Math.Sqrt(traffic.PayloadVariance);
-                var normDist = new Normal(traffic.PayloadMean, stddev, _rng);
-                payloadSize = (int)Math.Round(normDist.Sample());
-                payloadSize = Math.Max(64, payloadSize);
+                var uniformDist = new DiscreteUniform(
+                    (int)traffic.PayloadDist.MinVal,
+                    (int)traffic.PayloadDist.MaxVal,
+                    _rng);
+                payloadSize = uniformDist.Sample();
             }
-            else
+            else if (traffic.PayloadDist.Type == "constant")
             {
-                payloadSize = Math.Max(64, traffic.PayloadMean);
+                payloadSize = (int)traffic.PayloadDist.Value;
             }
+            payloadSize = Math.Max(64, payloadSize);
 
             string nextHop = routes.ContainsKey(traffic.Src)
                 ? routes[traffic.Src][traffic.Dst]
@@ -355,9 +363,6 @@ namespace Pytools.Services
                 DstId = traffic.Dst,
                 CurrentNodeId = nextHop,
                 PayloadSize = payloadSize,
-                IntervalMean = traffic.IntervalMean,
-                PayloadMean = traffic.PayloadMean,
-                PayloadVariance = traffic.PayloadVariance,
                 CreationTime = scheduleTime,
                 FromNodeId = traffic.Src,
                 SrcPort = traffic.SrcPort,

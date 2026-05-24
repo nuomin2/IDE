@@ -2,6 +2,24 @@ using System.Text.Json.Serialization;
 
 namespace Pytools.Models.Simulation
 {
+    public class DistributionData
+    {
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = "";
+
+        [JsonPropertyName("value")]
+        public double Value { get; set; }
+
+        [JsonPropertyName("mean")]
+        public double Mean { get; set; }
+
+        [JsonPropertyName("min_val")]
+        public double MinVal { get; set; }
+
+        [JsonPropertyName("max_val")]
+        public double MaxVal { get; set; }
+    }
+
     public class TrafficData
     {
         [JsonPropertyName("src")]
@@ -25,13 +43,10 @@ namespace Pytools.Models.Simulation
         [JsonPropertyName("type")]
         public string Type { get; set; } = "";
 
-        [JsonPropertyName("interval_mean")]
-        public double IntervalMean { get; set; }
+        [JsonPropertyName("interval_dist")]
+        public DistributionData IntervalDist { get; set; } = new();
 
-        [JsonPropertyName("payload_mean")]
-        public int PayloadMean { get; set; }
-
-        [JsonPropertyName("payload_variance")]
-        public double PayloadVariance { get; set; }
+        [JsonPropertyName("payload_dist")]
+        public DistributionData PayloadDist { get; set; } = new();
     }
 }

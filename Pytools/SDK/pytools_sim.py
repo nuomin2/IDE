@@ -10,6 +10,34 @@ from matplotlib.ticker import PercentFormatter
 import networkx as nx
 
 
+class ConstantDist:
+    """固定值分布 — 每次采样返回相同值。"""
+    def __init__(self, value: float):
+        self.value = value
+
+    def to_dict(self):
+        return {"type": "constant", "value": self.value}
+
+
+class ExponentialDist:
+    """指数分布 — 到达间隔的经典 Poisson 模型。"""
+    def __init__(self, mean: float):
+        self.mean = mean
+
+    def to_dict(self):
+        return {"type": "exponential", "mean": self.mean}
+
+
+class UniformDist:
+    """离散均匀分布 — 包大小的随机模型。"""
+    def __init__(self, min_val: int, max_val: int):
+        self.min_val = min_val
+        self.max_val = max_val
+
+    def to_dict(self):
+        return {"type": "uniform", "min_val": self.min_val, "max_val": self.max_val}
+
+
 class Node:
     """Base class for all network nodes."""
 
@@ -64,9 +92,8 @@ class Traffic:
         src: str,
         dst: str,
         type: str,
-        interval_mean: float,
-        payload_mean: int,
-        payload_variance: float = 0.0,
+        interval_dist,
+        payload_dist,
         src_port: int | None = None,
         dst_port: int | None = None,
         qos_level: int = 0,
@@ -78,9 +105,8 @@ class Traffic:
         self.src = src
         self.dst = dst
         self.type = type
-        self.interval_mean = interval_mean
-        self.payload_mean = payload_mean
-        self.payload_variance = payload_variance
+        self.interval_dist = interval_dist
+        self.payload_dist = payload_dist
         self.qos_level = qos_level
 
         if src_port is None:
@@ -158,17 +184,16 @@ class Simulator:
         src: str,
         dst: str,
         type: str,
-        interval_mean: float,
-        payload_mean: int,
-        payload_variance: float = 0.0,
+        interval_dist,
+        payload_dist,
         src_port: int | None = None,
         dst_port: int | None = None,
         qos_level: int = 0,
         flow_id: int | None = None,
     ) -> None:
         self.traffics.append(
-            Traffic(src, dst, type, interval_mean, payload_mean,
-                    payload_variance, src_port, dst_port, qos_level, flow_id)
+            Traffic(src, dst, type, interval_dist, payload_dist,
+                    src_port, dst_port, qos_level, flow_id)
         )
 
     def draw_topology(self) -> None:
@@ -249,9 +274,8 @@ class Simulator:
                     "qos_level": t.qos_level,
                     "flow_id": t.flow_id,
                     "type": t.type,
-                    "interval_mean": t.interval_mean,
-                    "payload_mean": t.payload_mean,
-                    "payload_variance": t.payload_variance,
+                    "interval_dist": t.interval_dist.to_dict(),
+                    "payload_dist": t.payload_dist.to_dict(),
                 }
                 for t in self.traffics
             ],
